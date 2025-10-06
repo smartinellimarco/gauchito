@@ -1,4 +1,4 @@
-use crate::edit::Edit;
+use crate::buffer::edit::Edit;
 
 #[derive(Debug, Clone)]
 pub struct HistoryEntry {
@@ -33,7 +33,7 @@ impl History {
         };
 
         self.undo_stack.push(entry);
-        self.redo_stack.clear(); // New action invalidates redo history
+        self.redo_stack.clear();
     }
 
     pub fn undo(&mut self) -> Option<Vec<Edit>> {

@@ -1,12 +1,11 @@
 [workspace]
-members = [
-    "core",
-]
+members = ["gauchito-core"]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 authors = ["Marco Martinelli <smartinellimarco@icloud.com>"]
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/smartinellimarco/ew"
+license = "MIT"
+repository = "https://github.com/smartinellimarco/gauchito"
+homepage = "https://github.com/smartinellimarco/gauchito"

@@ -1,11 +1,11 @@
 [package]
-name = "core"
+name = "gauchito-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
 ropey = "1.6"
-unicode-segmentation = "1.11.0" 

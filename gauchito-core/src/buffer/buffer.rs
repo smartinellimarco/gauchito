@@ -1,7 +1,7 @@
-use crate::edit::Edit;
+use crate::buffer::edit::Edit;
 
 use ropey::{Rope, RopeSlice};
-use std::path::PathBuf;
+use std::{fs::File, io, path::PathBuf};
 
 #[derive(Debug)]
 pub struct Buffer {
@@ -19,16 +19,23 @@ impl Buffer {
         }
     }
 
+    pub fn from_path<P: AsRef<std::path::Path>>(path: P) -> io::Result<Self> {
+        let file = File::open(&path)?;
+        let text = Rope::from_reader(io::BufReader::new(file))?;
+
+        Ok(Self {
+            content: text,
+            path: Some(path.as_ref().to_path_buf()),
+            modified: false,
+        })
+    }
+
     pub fn from_str(text: &str) -> Self {
         Self {
             content: Rope::from_str(text),
             path: None,
             modified: false,
         }
-    }
-
-    pub fn content(&self) -> &Rope {
-        &self.content
     }
 
     pub fn len_chars(&self) -> usize {
@@ -55,7 +62,7 @@ impl Buffer {
         self.modified = modified;
     }
 
-    pub fn apply(&mut self, edits: &[Edit]) -> Vec<String> {
+    pub fn apply_edits(&mut self, edits: &[Edit]) -> Vec<String> {
         let mut indexed_edits: Vec<_> = edits.iter().enumerate().collect();
 
         // Sort in reverse order to avoid offset issues
@@ -86,24 +93,19 @@ impl Buffer {
 
     fn handle_insertion(&mut self, edit: &Edit) -> String {
         self.content.insert(edit.start, &edit.text);
-
         String::new() // Nothing was deleted
     }
 
     fn handle_deletion(&mut self, edit: &Edit) -> String {
         let deleted_text = self.content.slice(edit.start..edit.end).to_string();
-
         self.content.remove(edit.start..edit.end);
-
         deleted_text
     }
 
     fn handle_replacement(&mut self, edit: &Edit) -> String {
         let deleted_text = self.content.slice(edit.start..edit.end).to_string();
-
         self.content.remove(edit.start..edit.end);
         self.content.insert(edit.start, &edit.text);
-
         deleted_text
     }
 
