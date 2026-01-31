@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = ["gauchito-core", "gauchito-daemon", "gauchito-tui", "gauchito-ui"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+homepage = "https://github.com/smartinellimarco/gauchito"
+repository = "https://github.com/smartinellimarco/gauchito"
+license = "MIT"
