@@ -1,0 +1,12 @@
+[package]
+name = "gauchito-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+ropey = "1.6.1"
+unicode-segmentation = "1.12"
+serde = { version = "1.0.228", features = ["derive"] }
