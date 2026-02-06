@@ -1,3 +1,5 @@
+use std::io;
+
 use ropey::Rope;
 
 use super::grapheme;
@@ -5,19 +7,29 @@ use crate::edit::Edit;
 
 pub struct Buffer {
     content: Rope,
+    pub modified: bool,
 }
 
 impl Buffer {
     pub fn new() -> Self {
         Self {
             content: Rope::new(),
+            modified: false,
         }
     }
 
     pub fn from_str(text: &str) -> Self {
         Self {
             content: Rope::from_str(text),
+            modified: false,
         }
+    }
+
+    pub fn from_reader<R: io::Read>(reader: R) -> io::Result<Self> {
+        Ok(Self {
+            content: Rope::from_reader(reader)?,
+            modified: false,
+        })
     }
 
     pub fn text(&self) -> String {
@@ -66,6 +78,7 @@ impl Buffer {
             self.content.insert(edit.start, &edit.text);
         }
 
+        self.modified = true;
         replaced
     }
 }
