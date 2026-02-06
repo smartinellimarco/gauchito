@@ -31,7 +31,6 @@ impl HistoryNode {
         }
     }
 
-    /// Inverse edits for undo
     pub fn inverse(&self) -> Vec<Edit> {
         self.edits
             .iter()
