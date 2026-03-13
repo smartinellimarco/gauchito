@@ -373,26 +373,24 @@ pub fn cs_xform(a: &ChangeSet, b: &ChangeSet, a_wins_ties: bool) -> (ChangeSet, 
         let do_a_insert = a_is_insert && (!b_is_insert || a_wins_ties);
         let do_b_insert = b_is_insert && !do_a_insert;
 
-        if do_b_insert {
-            if let Op::Insert(ref s) = b.ops[bi] {
-                let len = s.chars().count();
-                b_prime.insert(s);
-                a_prime.retain(len);
-                bi += 1;
-                b_off = 0;
-                continue;
-            }
+        if do_b_insert && let Op::Insert(ref s) = b.ops[bi] {
+            let len = s.chars().count();
+            b_prime.insert(s);
+            a_prime.retain(len);
+            bi += 1;
+            b_off = 0;
+            continue;
         }
 
-        if do_a_insert || a_is_insert {
-            if let Op::Insert(ref s) = a.ops[ai] {
-                let len = s.chars().count();
-                a_prime.insert(s);
-                b_prime.retain(len);
-                ai += 1;
-                a_off = 0;
-                continue;
-            }
+        if (do_a_insert || a_is_insert)
+            && let Op::Insert(ref s) = a.ops[ai]
+        {
+            let len = s.chars().count();
+            a_prime.insert(s);
+            b_prime.retain(len);
+            ai += 1;
+            a_off = 0;
+            continue;
         }
 
         // Both sides exhausted their inserts at this point.
