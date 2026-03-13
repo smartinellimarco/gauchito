@@ -524,7 +524,7 @@ impl JupiterSession {
         );
 
         // 1. Prune ACK'd entries.
-        while self.outgoing.front().map_or(false, |f| f.k < remote_y) {
+        while self.outgoing.front().is_some_and(|f| f.k < remote_y) {
             self.outgoing.pop_front();
         }
 
