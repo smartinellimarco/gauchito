@@ -20,8 +20,7 @@
 //! ```
 //!
 //! Tie-breaking (both inserting at the same position) follows Jupiter:
-//! **server (b) text is placed first**.
-//! TODO: add more tests for this.
+//! **server (b) text is placed first**. TODO: add more tests for this.
 //! sources:
 //! - https://dl.acm.org/doi/10.1145/215585.215706
 //! - https://docs.etherpad.org
