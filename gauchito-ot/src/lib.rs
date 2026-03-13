@@ -232,7 +232,7 @@ impl CsBuilder {
 /// Cursor-based builder for constructing a [`ChangeSet`] from a sequence of
 /// operations at ascending positions in the original document.
 ///
-/// ```ignore
+/// ```text
 /// let mut b = ChangeBuilder::new(doc_len);
 /// for (from, to) in sorted_ranges {
 ///     b.advance_to(from);
