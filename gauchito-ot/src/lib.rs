@@ -470,6 +470,12 @@ pub struct SentOp {
     pub k: u64,
 }
 
+impl Default for JupiterSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JupiterSession {
     /// Create a **client-side** session (server wins ties).
     pub fn new() -> Self {
