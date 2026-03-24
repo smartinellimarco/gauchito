@@ -370,6 +370,7 @@ pub fn cs_xform(a: &ChangeSet, b: &ChangeSet, a_wins_ties: bool) -> (ChangeSet, 
         let b_is_insert = !b_done && matches!(b.ops[bi], Op::Insert(_));
 
         // Decide which insert to process first.
+        // TODO: document when/why this is needed (real time / overlapping inserts conflict) and compare with Edit {start, end, text}
         let do_a_insert = a_is_insert && (!b_is_insert || a_wins_ties);
         let do_b_insert = b_is_insert && !do_a_insert;
 
