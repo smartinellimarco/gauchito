@@ -1,6 +1,9 @@
 use crate::selection::Selection;
 use gauchito_ot::ChangeSet;
 
+// ── Revision ────────────────────────────────────────────────────────────────
+
+/// One node in the history tree.
 struct Revision {
     parent: usize,
     last_child: Option<usize>,
@@ -9,6 +12,9 @@ struct Revision {
     selection: Selection,
 }
 
+// ── History ─────────────────────────────────────────────────────────────────
+
+/// Tree-structured undo history.
 pub struct History {
     revisions: Vec<Revision>,
     current: usize,
@@ -16,6 +22,7 @@ pub struct History {
 
 impl History {
     pub fn new() -> Self {
+        // Revision 0 is a sentinel root — it carries no real edit.
         History {
             revisions: vec![Revision {
                 parent: 0,
@@ -28,9 +35,11 @@ impl History {
         }
     }
 
+    /// Record a new revision as a child of the current one.
     pub fn commit(&mut self, forward: ChangeSet, inverse: ChangeSet, selection: Selection) {
         let new_idx = self.revisions.len();
 
+        // Point the current revision's redo branch at the new one
         self.revisions[self.current].last_child = Some(new_idx);
 
         self.revisions.push(Revision {
@@ -44,6 +53,8 @@ impl History {
         self.current = new_idx;
     }
 
+    /// Walk one step toward the root.
+    /// Returns the inverse changeset and the selection to restore.
     pub fn undo(&mut self) -> Option<(ChangeSet, Selection)> {
         if self.at_root() {
             return None;
@@ -58,6 +69,8 @@ impl History {
         Some((inverse, selection))
     }
 
+    /// Follow the most recent child branch one step.
+    /// Returns the forward changeset to re-apply.
     pub fn redo(&mut self) -> Option<ChangeSet> {
         let child = self.revisions[self.current].last_child?;
 
@@ -66,6 +79,7 @@ impl History {
         Some(self.revisions[self.current].forward.clone())
     }
 
+    /// True when there is nothing to undo.
     pub fn at_root(&self) -> bool {
         self.current == 0
     }
