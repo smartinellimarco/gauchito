@@ -28,19 +28,34 @@
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
+/// Cursor mapping bias when a position falls at an insert boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Bias {
+    /// Position stays before inserted text (remote edits).
+    Before,
+    /// Position lands after inserted text (local edits).
+    After,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Op
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// One step in a changeset.  All lengths are in **chars** (not bytes).
+/// One step in a changeset. All lengths are in **chars** (not bytes).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Op {
     /// Keep `n` chars from the input.
     Retain(usize),
-    /// Insert new text (not consuming input).
+    /// Insert new text (does not consume input).
     Insert(String),
     /// Remove `n` chars from the input.
     Delete(usize),
+}
+
+impl Op {
+    fn kind_is_insert(&self) -> bool {
+        matches!(self, Op::Insert(_))
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,6 +81,7 @@ impl ChangeSet {
                 out_len: 0,
             };
         }
+
         ChangeSet {
             ops: vec![Op::Retain(len)],
             in_len: len,
@@ -85,7 +101,9 @@ impl ChangeSet {
             self.in_len,
             doc.len_chars()
         );
+
         let mut pos = 0;
+
         for op in &self.ops {
             match op {
                 Op::Retain(n) => pos += n,
@@ -101,14 +119,18 @@ impl ChangeSet {
         }
     }
 
-    /// Map a cursor position through this changeset ("before" bias — positions
-    /// at an insert boundary stay before the inserted text).
-    pub fn map_pos(&self, pos: usize) -> usize {
+    /// Map a cursor position through this changeset.
+    ///
+    /// `Bias::Before` keeps the position before inserted text (remote edits).
+    /// `Bias::After` moves it past the insert (authoring view).
+    pub fn map_pos(&self, pos: usize, bias: Bias) -> usize {
         let mut in_pos = 0;
         let mut out_pos = 0;
+
         for op in &self.ops {
             match op {
                 Op::Retain(n) => {
+                    // Position falls inside this retain — offset is preserved
                     if pos < in_pos + n {
                         return out_pos + (pos - in_pos);
                     }
@@ -117,27 +139,34 @@ impl ChangeSet {
                 }
                 Op::Insert(s) => {
                     let len = s.chars().count();
-                    if pos == in_pos {
-                        return out_pos; // "before" bias
+
+                    // At the insert boundary, Before bias stays here
+                    if pos == in_pos && bias == Bias::Before {
+                        return out_pos;
                     }
+
                     out_pos += len;
                 }
                 Op::Delete(n) => {
+                    // Position inside deleted range collapses to the delete point
                     if pos < in_pos + n {
-                        return out_pos; // inside deleted region → collapse
+                        return out_pos;
                     }
                     in_pos += n;
                 }
             }
         }
+
+        // Position past the last op — offset by total shift
         out_pos + (pos - in_pos)
     }
 
-    /// Compute the inverse: applying `self.invert(original)` after `self`
-    /// restores the document.  `original` is the rope **before** this changeset.
+    /// Compute the inverse changeset.
+    /// Applying `self.invert(original)` after `self` restores the document.
     pub fn invert(&self, original: &ropey::Rope) -> ChangeSet {
         let mut b = CsBuilder::new();
         let mut in_pos = 0;
+
         for op in &self.ops {
             match op {
                 Op::Retain(n) => {
@@ -145,23 +174,27 @@ impl ChangeSet {
                     in_pos += n;
                 }
                 Op::Insert(s) => {
+                    // Inserted text becomes a delete in the inverse
                     b.delete(s.chars().count());
                 }
                 Op::Delete(n) => {
+                    // Deleted text is recovered from the original document
                     let text: String = original.slice(in_pos..in_pos + n).to_string();
                     b.insert(&text);
                     in_pos += n;
                 }
             }
         }
+
         b.build()
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CsBuilder — normalized ChangeSet construction
+// CsBuilder — normalized ChangeSet construction (internal)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Internal builder that merges adjacent same-type ops automatically.
 struct CsBuilder {
     ops: Vec<Op>,
     in_len: usize,
@@ -181,8 +214,11 @@ impl CsBuilder {
         if n == 0 {
             return;
         }
+
         self.in_len += n;
         self.out_len += n;
+
+        // Merge with trailing Retain if possible
         if let Some(Op::Retain(r)) = self.ops.last_mut() {
             *r += n;
         } else {
@@ -194,8 +230,10 @@ impl CsBuilder {
         if text.is_empty() {
             return;
         }
+
         let len = text.chars().count();
         self.out_len += len;
+
         if let Some(Op::Insert(s)) = self.ops.last_mut() {
             s.push_str(text);
         } else {
@@ -207,7 +245,9 @@ impl CsBuilder {
         if n == 0 {
             return;
         }
+
         self.in_len += n;
+
         if let Some(Op::Delete(d)) = self.ops.last_mut() {
             *d += n;
         } else {
@@ -225,7 +265,7 @@ impl CsBuilder {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ChangeBuilder — public cursor-based API for building changesets
+// ChangeBuilder — public cursor-based API
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Cursor-based builder for constructing a [`ChangeSet`] from a sequence of
@@ -237,7 +277,6 @@ impl CsBuilder {
 ///     b.advance_to(from);
 ///     b.delete(to - from);
 ///     b.insert("replacement");
-///     // b.out_pos() is the cursor position in the output
 /// }
 /// let cs = b.finish();
 /// ```
@@ -256,7 +295,7 @@ impl ChangeBuilder {
         }
     }
 
-    /// Advance to position `pos` in the input document, emitting a Retain.
+    /// Advance to `pos` in the input document, emitting a Retain for skipped chars.
     pub fn advance_to(&mut self, pos: usize) {
         assert!(
             pos >= self.cursor,
@@ -268,6 +307,7 @@ impl ChangeBuilder {
             "ChangeBuilder: advance_to({pos}) > doc_len {}",
             self.doc_len
         );
+
         if pos > self.cursor {
             self.b.retain(pos - self.cursor);
             self.cursor = pos;
@@ -282,6 +322,7 @@ impl ChangeBuilder {
             self.cursor,
             self.doc_len
         );
+
         if n > 0 {
             self.b.delete(n);
             self.cursor += n;
@@ -301,7 +342,7 @@ impl ChangeBuilder {
         self.insert(text);
     }
 
-    /// Current output position — use this to track where cursors land.
+    /// Current output position — tracks where cursors land after applied ops.
     pub fn out_pos(&self) -> usize {
         self.b.out_len
     }
@@ -311,6 +352,7 @@ impl ChangeBuilder {
         if self.cursor < self.doc_len {
             self.b.retain(self.doc_len - self.cursor);
         }
+
         self.b.build()
     }
 }
@@ -333,10 +375,9 @@ impl ChangeBuilder {
 /// ## Tie-breaking
 /// When both changesets insert at the same input position, server (b) text is
 /// placed **first** (Jupiter §7).
-/// Transform two concurrent changesets into a convergent pair.
 ///
 /// When `a_wins_ties` is true, `a`'s inserts are placed **before** `b`'s at the
-/// same input position.  When false, `b`'s inserts go first.
+/// same input position. When false, `b`'s inserts go first.
 ///
 /// In Jupiter: the **server** (higher-priority site) should always win ties.
 /// - Server-side session (processing client msg): `a_wins_ties = true`
@@ -361,19 +402,22 @@ pub fn cs_xform(a: &ChangeSet, b: &ChangeSet, a_wins_ties: bool) -> (ChangeSet, 
     loop {
         let a_done = ai >= a.ops.len();
         let b_done = bi >= b.ops.len();
+
         if a_done && b_done {
             break;
         }
 
-        // Handle inserts.  The winner goes first when both are Insert.
+        // ── Handle inserts first (they don't consume input) ─────────
+
         let a_is_insert = !a_done && matches!(a.ops[ai], Op::Insert(_));
         let b_is_insert = !b_done && matches!(b.ops[bi], Op::Insert(_));
 
-        // Decide which insert to process first.
+        // Decide which insert to process first based on tie-breaking
         // TODO: document when/why this is needed (real time / overlapping inserts conflict) and compare with Edit {start, end, text}
         let do_a_insert = a_is_insert && (!b_is_insert || a_wins_ties);
         let do_b_insert = b_is_insert && !do_a_insert;
 
+        // b inserts: text appears in b′, a′ retains over it
         if do_b_insert && let Op::Insert(ref s) = b.ops[bi] {
             let len = s.chars().count();
             b_prime.insert(s);
@@ -383,6 +427,7 @@ pub fn cs_xform(a: &ChangeSet, b: &ChangeSet, a_wins_ties: bool) -> (ChangeSet, 
             continue;
         }
 
+        // a inserts: text appears in a′, b′ retains over it
         if (do_a_insert || a_is_insert)
             && let Op::Insert(ref s) = a.ops[ai]
         {
@@ -394,40 +439,40 @@ pub fn cs_xform(a: &ChangeSet, b: &ChangeSet, a_wins_ties: bool) -> (ChangeSet, 
             continue;
         }
 
-        // Both sides exhausted their inserts at this point.
         if a_done || b_done {
-            // Shouldn't happen if in_len matches, but just in case
             break;
         }
 
-        // Both are consuming input (Retain or Delete).
+        // ── Both sides consuming input (Retain or Delete) ───────────
+
         let a_rem = op_input_len(&a.ops[ai]) - a_off;
         let b_rem = op_input_len(&b.ops[bi]) - b_off;
         let n = a_rem.min(b_rem);
 
         match (&a.ops[ai], &b.ops[bi]) {
             (Op::Retain(_), Op::Retain(_)) => {
+                // Both retain — pass through
                 a_prime.retain(n);
                 b_prime.retain(n);
             }
             (Op::Delete(_), Op::Retain(_)) => {
-                // a deletes chars that b retained → a′ still deletes.
-                // b′: these chars won't exist in a's output, so nothing.
+                // a deletes chars that b retained → a′ still deletes
                 a_prime.delete(n);
             }
             (Op::Retain(_), Op::Delete(_)) => {
-                // b deletes chars that a retained → b′ still deletes.
-                // a′: these chars won't exist in b's output, so nothing.
+                // b deletes chars that a retained → b′ still deletes
                 b_prime.delete(n);
             }
             (Op::Delete(_), Op::Delete(_)) => {
-                // Both delete the same chars — no-op in both primes.
+                // Both delete the same chars — no-op in both primes
             }
             _ => unreachable!("inserts handled above"),
         }
 
+        // Advance cursors, resetting offset when an op is fully consumed
         a_off += n;
         b_off += n;
+
         if a_off >= op_input_len(&a.ops[ai]) {
             ai += 1;
             a_off = 0;
@@ -441,6 +486,106 @@ pub fn cs_xform(a: &ChangeSet, b: &ChangeSet, a_wins_ties: bool) -> (ChangeSet, 
     (a_prime.build(), b_prime.build())
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Compose
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Compose two sequential changesets into one.
+///
+/// `a` is applied first, then `b`. Requires `a.out_len == b.in_len`.
+/// The result has `in_len = a.in_len`, `out_len = b.out_len`.
+pub fn compose(a: &ChangeSet, b: &ChangeSet) -> ChangeSet {
+    assert_eq!(
+        a.out_len, b.in_len,
+        "compose: a.out_len ({}) != b.in_len ({})",
+        a.out_len, b.in_len
+    );
+
+    let mut w = CsBuilder::new();
+
+    let mut ai = 0usize;
+    let mut bi = 0usize;
+    let mut a_rem = 0usize;
+    let mut b_rem = 0usize;
+
+    let remaining = |idx: usize, rem: usize, ops: &[Op]| -> usize {
+        if rem > 0 {
+            rem
+        } else if ops[idx].kind_is_insert() {
+            op_output_len(&ops[idx])
+        } else {
+            op_input_len(&ops[idx])
+        }
+    };
+
+    while ai < a.ops.len() || bi < b.ops.len() {
+        let a_has = ai < a.ops.len();
+        let b_has = bi < b.ops.len();
+
+        // a's Delete doesn't produce output for b — pass through
+        if a_has && matches!(a.ops[ai], Op::Delete(_)) {
+            let n = remaining(ai, a_rem, &a.ops);
+            w.delete(n);
+            a_rem = 0;
+            ai += 1;
+            continue;
+        }
+
+        // b's Insert doesn't consume a's output — pass through
+        if b_has && matches!(b.ops[bi], Op::Insert(_)) {
+            let s = op_remaining_str(&b.ops[bi], b_rem);
+            w.insert(&s);
+            b_rem = 0;
+            bi += 1;
+            continue;
+        }
+
+        if !a_has || !b_has {
+            break;
+        }
+
+        let an = remaining(ai, a_rem, &a.ops);
+        let bn = remaining(bi, b_rem, &b.ops);
+        let n = an.min(bn);
+
+        match (&a.ops[ai], &b.ops[bi]) {
+            (Op::Retain(_), Op::Retain(_)) => w.retain(n),
+            (Op::Retain(_), Op::Delete(_)) => w.delete(n),
+            (Op::Insert(_), Op::Retain(_)) => {
+                // a's inserted text is retained by b — take n chars of it
+                let s = op_remaining_str(&a.ops[ai], a_rem);
+                let partial: String = s.chars().take(n).collect();
+                w.insert(&partial);
+            }
+            (Op::Insert(_), Op::Delete(_)) => {
+                // a inserted, b deleted the same chars — they cancel out
+            }
+            _ => unreachable!(),
+        }
+
+        // Consume n from both sides
+        if n >= an {
+            a_rem = 0;
+            ai += 1;
+        } else {
+            a_rem = an - n;
+        }
+
+        if n >= bn {
+            b_rem = 0;
+            bi += 1;
+        } else {
+            b_rem = bn - n;
+        }
+    }
+
+    w.build()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Op helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// How many input chars an op consumes (0 for Insert).
 fn op_input_len(op: &Op) -> usize {
     match op {
@@ -449,11 +594,41 @@ fn op_input_len(op: &Op) -> usize {
     }
 }
 
+/// How many output chars an op produces (0 for Delete).
+fn op_output_len(op: &Op) -> usize {
+    match op {
+        Op::Retain(n) => *n,
+        Op::Insert(s) => s.chars().count(),
+        Op::Delete(_) => 0,
+    }
+}
+
+/// Get the unconsumed tail of an Insert op's string.
+/// `rem` is the number of chars remaining; 0 means the full string.
+fn op_remaining_str(op: &Op, rem: usize) -> String {
+    if let Op::Insert(s) = op {
+        let total = s.chars().count();
+        let consumed = if rem > 0 { total - rem } else { 0 };
+        s.chars().skip(consumed).collect()
+    } else {
+        String::new()
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Jupiter session state
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Keeps track of the link state between two sites (Client ↔ Server).
+/// One locally-generated changeset waiting for acknowledgement.
+pub struct SentOp {
+    pub cs: ChangeSet,
+    pub k: u64,
+}
+
+/// Link state between two OT sites (Client ↔ Server).
+///
+/// Tracks message counts and a queue of unacknowledged local ops,
+/// transforming incoming remote ops against them on arrival.
 pub struct JupiterSession {
     /// Count of messages generated locally and sent.
     pub k: u64,
@@ -466,11 +641,6 @@ pub struct JupiterSession {
     local_wins_ties: bool,
 }
 
-pub struct SentOp {
-    pub cs: ChangeSet,
-    pub k: u64,
-}
-
 impl Default for JupiterSession {
     fn default() -> Self {
         Self::new()
@@ -478,7 +648,7 @@ impl Default for JupiterSession {
 }
 
 impl JupiterSession {
-    /// Create a **client-side** session (server wins ties).
+    /// Create a **client-side** session (server wins insert ties).
     pub fn new() -> Self {
         Self {
             k: 0,
@@ -488,7 +658,7 @@ impl JupiterSession {
         }
     }
 
-    /// Create a **server-side** session (this site wins ties).
+    /// Create a **server-side** session (this site wins insert ties).
     pub fn new_server() -> Self {
         Self {
             k: 0,
@@ -502,11 +672,13 @@ impl JupiterSession {
     /// Returns `(changeset, k, y)` — the tags for the wire message.
     pub fn push_local(&mut self, cs: ChangeSet) -> (ChangeSet, u64, u64) {
         let tag = (self.k, self.y);
+
         self.outgoing.push_back(SentOp {
             cs: cs.clone(),
             k: self.k,
         });
         self.k += 1;
+
         (cs, tag.0, tag.1)
     }
 
@@ -524,12 +696,12 @@ impl JupiterSession {
             self.y
         );
 
-        // 1. Prune ACK'd entries.
+        // 1. Prune ACK'd entries
         while self.outgoing.front().is_some_and(|f| f.k < remote_y) {
             self.outgoing.pop_front();
         }
 
-        // 2. Transform against each remaining outgoing op.
+        // 2. Transform against each remaining outgoing op
         let mut inc = incoming;
         for saved in &mut self.outgoing {
             let (saved_prime, inc_prime) = cs_xform(&saved.cs, &inc, self.local_wins_ties);
@@ -538,6 +710,7 @@ impl JupiterSession {
         }
 
         self.y += 1;
+
         inc
     }
 }
@@ -549,7 +722,8 @@ impl JupiterSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // ── Helper: build a ChangeSet from (start, end, text) ────────────────────
+
+    // ── Helper: build a ChangeSet from (start, end, text) ────────────────
 
     fn cs(doc_len: usize, start: usize, end: usize, text: &str) -> ChangeSet {
         let mut b = ChangeBuilder::new(doc_len);
@@ -566,11 +740,11 @@ mod tests {
         cs(doc_len, start, end, "")
     }
 
-    // ── Convergence helper ───────────────────────────────────────────────────
+    // ── Convergence helper ──────────────────────────────────────────────
 
     /// Both OT paths must produce the same document.
     fn converges(doc_str: &str, c: ChangeSet, s: ChangeSet) -> String {
-        // Server (s) wins ties → a_wins_ties=false (s is b).
+        // Server (s) wins ties → a_wins_ties=false (s is b)
         let (c_prime, s_prime) = cs_xform(&c, &s, false);
 
         let mut doc1 = ropey::Rope::from_str(doc_str);
@@ -586,7 +760,7 @@ mod tests {
         doc1.to_string()
     }
 
-    // ── Jupiter 2-client test ────────────────────────────────────────────────
+    // ── Jupiter 2-client test ───────────────────────────────────────────
 
     #[test]
     fn test_jupiter_convergence() {
@@ -632,7 +806,7 @@ mod tests {
         assert_eq!(client_b_doc.to_string(), server_doc.to_string());
     }
 
-    // ── Paper example (§5, Figure 3) ─────────────────────────────────────────
+    // ── Paper example (§5, Figure 3) ────────────────────────────────────
 
     #[test]
     fn paper_example_del_d_del_b() {
@@ -640,7 +814,7 @@ mod tests {
         assert_eq!(result, "ACE");
     }
 
-    // ── No overlap ──────────────────────────────────────────────────────────
+    // ── No overlap ─────────────────────────────────────────────────────
 
     #[test]
     fn no_overlap_c_before_s_delete() {
@@ -666,7 +840,7 @@ mod tests {
         assert_eq!(r, "XYZE");
     }
 
-    // ── Equal regions ────────────────────────────────────────────────────────
+    // ── Equal regions ───────────────────────────────────────────────────
 
     #[test]
     fn equal_both_pure_delete() {
@@ -686,7 +860,7 @@ mod tests {
         assert_eq!(r, "AZXYB");
     }
 
-    // ── Containment cases ────────────────────────────────────────────────────
+    // ── Containment cases ───────────────────────────────────────────────
 
     #[test]
     fn c_contains_s_same_ends() {
@@ -724,7 +898,7 @@ mod tests {
         assert_eq!(r, "AZXYE");
     }
 
-    // ── Overlap cases ────────────────────────────────────────────────────────
+    // ── Overlap cases ───────────────────────────────────────────────────
 
     #[test]
     fn c_overlaps_s_left() {
@@ -750,7 +924,7 @@ mod tests {
         assert_eq!(r, "");
     }
 
-    // ── Additional tests ─────────────────────────────────────────────────────
+    // ── Additional tests ────────────────────────────────────────────────
 
     #[test]
     fn insert_and_delete_overlap() {
@@ -784,7 +958,7 @@ mod tests {
         assert_eq!(r, "worldhello");
     }
 
-    // ── Jupiter multi-edit test ──────────────────────────────────────────────
+    // ── Jupiter multi-edit test ─────────────────────────────────────────
 
     #[test]
     fn test_jupiter_multiple_edits() {
@@ -838,7 +1012,7 @@ mod tests {
         );
     }
 
-    // ── ChangeSet basics ─────────────────────────────────────────────────────
+    // ── ChangeSet basics ────────────────────────────────────────────────
 
     #[test]
     fn changeset_insert() {
@@ -881,14 +1055,23 @@ mod tests {
     }
 
     #[test]
-    fn changeset_map_pos() {
-        // Insert "XY" at position 2 in "ABCDE"
+    fn changeset_map_pos_before_bias() {
         let c = cs_ins(5, 2, "XY");
-        assert_eq!(c.map_pos(0), 0);
-        assert_eq!(c.map_pos(1), 1);
-        assert_eq!(c.map_pos(2), 2); // at insert point → before (before bias)
-        assert_eq!(c.map_pos(3), 5); // after insert, shifted by 2
-        assert_eq!(c.map_pos(4), 6);
+        assert_eq!(c.map_pos(0, Bias::Before), 0);
+        assert_eq!(c.map_pos(1, Bias::Before), 1);
+        assert_eq!(c.map_pos(2, Bias::Before), 2); // at insert point → stays before
+        assert_eq!(c.map_pos(3, Bias::Before), 5); // after insert, shifted by 2
+        assert_eq!(c.map_pos(4, Bias::Before), 6);
+    }
+
+    #[test]
+    fn changeset_map_pos_after_bias() {
+        let c = cs_ins(5, 2, "XY");
+        assert_eq!(c.map_pos(0, Bias::After), 0);
+        assert_eq!(c.map_pos(1, Bias::After), 1);
+        assert_eq!(c.map_pos(2, Bias::After), 4); // at insert point → lands after
+        assert_eq!(c.map_pos(3, Bias::After), 5);
+        assert_eq!(c.map_pos(4, Bias::After), 6);
     }
 
     #[test]
@@ -904,11 +1087,10 @@ mod tests {
         assert_eq!(doc.to_string(), "ABCDE");
     }
 
-    // ── ChangeBuilder ────────────────────────────────────────────────────────
+    // ── ChangeBuilder ───────────────────────────────────────────────────
 
     #[test]
     fn change_builder_multi_edit() {
-        // Delete char at 1 ("B"), then insert "X" at pos 3 (original coords)
         let mut b = ChangeBuilder::new(5); // "ABCDE"
         b.advance_to(1);
         b.delete(1); // delete "B"
@@ -930,5 +1112,86 @@ mod tests {
         assert_eq!(b.out_pos(), 2); // delete doesn't advance output
         b.insert("XY");
         assert_eq!(b.out_pos(), 4); // inserted 2 chars
+    }
+
+    // ── Compose ─────────────────────────────────────────────────────────
+
+    fn compose_and_apply(doc: &str, a: ChangeSet, b: ChangeSet) -> String {
+        let mut rope = ropey::Rope::from_str(doc);
+        let c = compose(&a, &b);
+        assert_eq!(c.in_len, a.in_len);
+        assert_eq!(c.out_len, b.out_len);
+        c.apply(&mut rope);
+        rope.to_string()
+    }
+
+    #[test]
+    fn compose_insert_then_insert() {
+        let a = cs_ins(3, 1, "X"); // "ABC" → "AXBC"
+        let b = cs_ins(4, 3, "Y"); // "AXBC" → "AXBYC"
+        assert_eq!(compose_and_apply("ABC", a, b), "AXBYC");
+    }
+
+    #[test]
+    fn compose_insert_then_delete() {
+        let a = cs_ins(3, 1, "XY"); // "ABC" → "AXYBC"
+        let b = cs_del(5, 1, 3); // "AXYBC" → "ABC"
+        assert_eq!(compose_and_apply("ABC", a, b), "ABC");
+    }
+
+    #[test]
+    fn compose_delete_then_insert() {
+        let a = cs_del(5, 1, 3); // "ABCDE" → "ADE"
+        let b = cs_ins(3, 1, "XY"); // "ADE" → "AXYDE"
+        assert_eq!(compose_and_apply("ABCDE", a, b), "AXYDE");
+    }
+
+    #[test]
+    fn compose_delete_then_delete() {
+        let a = cs_del(5, 0, 2); // "ABCDE" → "CDE"
+        let b = cs_del(3, 1, 3); // "CDE" → "C"
+        assert_eq!(compose_and_apply("ABCDE", a, b), "C");
+    }
+
+    #[test]
+    fn compose_replace_then_replace() {
+        let a = cs(5, 1, 3, "XY"); // "ABCDE" → "AXYDE"
+        let b = cs(5, 2, 4, "Z"); // "AXYDE" → "AXZE"
+        assert_eq!(compose_and_apply("ABCDE", a, b), "AXZE");
+    }
+
+    #[test]
+    fn compose_identity_then_edit() {
+        let a = ChangeSet::identity(5);
+        let b = cs_ins(5, 2, "X");
+        assert_eq!(compose_and_apply("ABCDE", a, b), "ABXCDE");
+    }
+
+    #[test]
+    fn compose_edit_then_identity() {
+        let a = cs_ins(5, 2, "X");
+        let b = ChangeSet::identity(6);
+        assert_eq!(compose_and_apply("ABCDE", a, b), "ABXCDE");
+    }
+
+    #[test]
+    fn compose_chain_three() {
+        let a = cs_ins(5, 0, "X"); // "ABCDE" → "XABCDE"
+        let b = cs_ins(6, 6, "Y"); // "XABCDE" → "XABCDEY"
+        let c = cs_del(7, 3, 5); // "XABCDEY" → "XABEY"
+        let ab = compose(&a, &b);
+        let abc = compose(&ab, &c);
+        assert_eq!(abc.in_len, 5);
+        assert_eq!(abc.out_len, 5);
+        let mut rope = ropey::Rope::from_str("ABCDE");
+        abc.apply(&mut rope);
+        assert_eq!(rope.to_string(), "XABEY");
+    }
+
+    #[test]
+    fn compose_partial_insert_retain() {
+        let a = cs_ins(2, 0, "HELLO"); // "AB" → "HELLOAB"
+        let b = cs_del(7, 3, 5); // "HELLOAB" → "HELAB"
+        assert_eq!(compose_and_apply("AB", a, b), "HELAB");
     }
 }
