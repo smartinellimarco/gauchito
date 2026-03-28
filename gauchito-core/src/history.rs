@@ -91,6 +91,8 @@ impl Default for History {
     }
 }
 
+// ── Tests ────────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::*;
