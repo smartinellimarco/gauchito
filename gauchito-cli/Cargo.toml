@@ -1,0 +1,25 @@
+[package]
+name         = "gauchito-cli"
+version.workspace   = true
+edition.workspace   = true
+license.workspace   = true
+
+[[bin]]
+name = "gauchito"
+path = "src/main.rs"
+
+[dependencies]
+gauchito-core = { path = "../gauchito-core" }
+gauchito-script = { path = "../gauchito-script" }
+gauchito-paths  = { path = "../gauchito-paths" }
+gauchito-ui = { path = "../gauchito-ui" }
+ratatui        = { version = "0.30", features = ["crossterm_0_29"] }
+crossterm      = { version = "0.29", features = ["event-stream"] }
+ropey          = "1.6.1"
+tracing        = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap           = { version = "4", features = ["derive"] }
+anyhow         = "1"
+futures        = "0.3"
+tokio          = { workspace = true }
+crokey = "1.4.0"
