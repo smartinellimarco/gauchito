@@ -1,5 +1,4 @@
 pub mod anchor;
-pub mod buffer;
 pub mod changeset;
 pub mod document;
 pub mod editorconfig;
