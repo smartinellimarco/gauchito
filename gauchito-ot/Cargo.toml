@@ -1,9 +1,0 @@
-[package]
-name = "gauchito-ot"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-
-[dependencies]
-ropey = { workspace = true }
-serde = { version = "1.0.228", features = ["derive"] }
