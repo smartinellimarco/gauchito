@@ -1,11 +1,4 @@
-//! Document loader.
-//!
-//! Centralizes the "open a file" pipeline: canonicalize the path, read
-//! `.editorconfig` rules for it, sniff BOM / line-ending style / final-newline
-//! from the file itself, merge those into resolved [`DocumentOptions`], and
-//! return a [`Document`] ready to add to an editor.
-
-use std::io::{self, BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use ropey::{Rope, RopeBuilder};
@@ -14,8 +7,6 @@ use crate::document::Document;
 use crate::editorconfig;
 use crate::options::{DocumentOptions, LineEnding};
 
-/// Load a document from disk. A missing path becomes an empty buffer pointing
-/// at it (the file is created on first save).
 pub fn load(path: PathBuf) -> io::Result<Document> {
     let path = std::fs::canonicalize(&path).unwrap_or(path);
     let rules = editorconfig::rules_for(&path);
@@ -92,4 +83,52 @@ fn read_and_sniff(path: &Path) -> io::Result<(Rope, LineEnding, bool, bool)> {
     }
 
     Ok((builder.finish(), line_ending, final_newline, bom))
+}
+
+pub fn write(doc: &Document) -> io::Result<()> {
+    let path = doc
+        .path
+        .as_ref()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "document has no file path"))?;
+
+    let file = std::fs::File::create(path)?;
+    let mut w = io::BufWriter::new(file);
+
+    if doc.options.bom {
+        w.write_all("\u{feff}".as_bytes())?;
+    }
+
+    let sep = doc.options.line_ending.as_str();
+
+    for line in doc.text.lines() {
+        let mut content: String = line.chars().collect();
+
+        // Strip the trailing \n that ropey keeps on every line except possibly the last.
+        let had_newline = content.ends_with('\n');
+        if had_newline {
+            content.pop();
+        }
+
+        if doc.options.trim_trailing_whitespace {
+            let trimmed = content.trim_end();
+            content.truncate(trimmed.len());
+        }
+
+        w.write_all(content.as_bytes())?;
+
+        if had_newline {
+            w.write_all(sep.as_bytes())?;
+        }
+    }
+
+    // Final newline policy.
+    if doc.options.final_newline {
+        let len = doc.text.len_chars();
+        let ends_with_nl = len > 0 && doc.text.char(len - 1) == '\n';
+        if !ends_with_nl {
+            w.write_all(sep.as_bytes())?;
+        }
+    }
+
+    w.flush()
 }
