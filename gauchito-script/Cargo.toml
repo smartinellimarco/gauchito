@@ -1,0 +1,13 @@
+[package]
+name    = "gauchito-script"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gauchito-core   = { path = "../gauchito-core" }
+gauchito-paths  = { path = "../gauchito-paths" }
+gauchito-ui     = { path = "../gauchito-ui" }
+mlua            = { version = "0.10", features = ["luajit", "vendored"] }
+ropey           = "1.6.1"
+tracing         = "0.1"
