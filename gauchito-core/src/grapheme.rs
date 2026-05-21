@@ -1,8 +1,6 @@
 use ropey::RopeSlice;
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 
-/// Find the previous grapheme boundary before `char_idx`.
-/// Returns 0 if already at the start.
 // source: https://github.com/cessen/ropey/blob/master/examples/graphemes_step.rs
 pub fn prev_grapheme_boundary(slice: &RopeSlice, char_idx: usize) -> usize {
     let byte_idx = slice.char_to_byte(char_idx);
@@ -10,7 +8,6 @@ pub fn prev_grapheme_boundary(slice: &RopeSlice, char_idx: usize) -> usize {
     let mut cursor = GraphemeCursor::new(byte_idx, total_bytes, true);
     let mut cur_byte = byte_idx;
 
-    // Walk chunks backward until we find a boundary
     loop {
         let (chunk, chunk_byte_start, _, _) = if cur_byte == 0 {
             slice.chunk_at_byte(0)
@@ -33,15 +30,12 @@ pub fn prev_grapheme_boundary(slice: &RopeSlice, char_idx: usize) -> usize {
     }
 }
 
-/// Find the next grapheme boundary after `char_idx`.
-/// Returns `len_chars()` if already at the end.
 pub fn next_grapheme_boundary(slice: &RopeSlice, char_idx: usize) -> usize {
     let byte_idx = slice.char_to_byte(char_idx);
     let total_bytes = slice.len_bytes();
     let mut cursor = GraphemeCursor::new(byte_idx, total_bytes, true);
     let mut cur_byte = byte_idx;
 
-    // Walk chunks forward until we find a boundary
     loop {
         let clamped = cur_byte.min(total_bytes.saturating_sub(1));
         let (chunk, chunk_byte_start, _, _) = if total_bytes == 0 {
