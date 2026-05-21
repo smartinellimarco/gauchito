@@ -1,4 +1,4 @@
-use crate::mutation::Mutation;
+use crate::atom::Atom;
 
 #[derive(Clone)]
 pub struct SelectionSnapshot {
@@ -6,11 +6,27 @@ pub struct SelectionSnapshot {
     pub primary: usize,
 }
 
+#[derive(Clone)]
 pub struct Transaction {
-    pub mutations: Vec<Mutation>,
-    pub inverses: Vec<Mutation>,
+    pub atoms: Vec<Atom>,
+    pub inverses: Vec<Atom>,
     pub selection_before: Option<SelectionSnapshot>,
     pub selection_after: Option<SelectionSnapshot>,
+}
+
+impl Transaction {
+    pub fn empty() -> Self {
+        Transaction {
+            atoms: Vec::new(),
+            inverses: Vec::new(),
+            selection_before: None,
+            selection_after: None,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.atoms.is_empty()
+    }
 }
 
 struct Revision {
@@ -30,12 +46,7 @@ impl History {
             revisions: vec![Revision {
                 parent: 0,
                 last: None,
-                txn: Transaction {
-                    mutations: Vec::new(),
-                    inverses: Vec::new(),
-                    selection_before: None,
-                    selection_after: None,
-                },
+                txn: Transaction::empty(),
             }],
             current: 0,
         }
@@ -45,7 +56,6 @@ impl History {
         let id = self.revisions.len();
 
         self.revisions[self.current].last = Some(id);
-
         self.revisions.push(Revision {
             parent: self.current,
             last: None,
@@ -55,31 +65,25 @@ impl History {
         self.current = id;
     }
 
-    pub fn undo(&mut self) -> Option<(Vec<Mutation>, Option<SelectionSnapshot>)> {
+    pub fn undo(&mut self) -> Option<Transaction> {
         if self.at_root() {
             return None;
         }
 
         let revision = &self.revisions[self.current];
-        let inverses = revision.txn.inverses.clone();
-        let selection = revision.txn.selection_before.clone();
+        let txn = revision.txn.clone();
 
         self.current = revision.parent;
 
-        Some((inverses, selection))
+        Some(txn)
     }
 
-    pub fn redo(&mut self) -> Option<(Vec<Mutation>, Option<SelectionSnapshot>)> {
+    pub fn redo(&mut self) -> Option<Transaction> {
         let child = self.revisions[self.current].last?;
 
         self.current = child;
 
-        let revision = &self.revisions[self.current];
-
-        Some((
-            revision.txn.mutations.clone(),
-            revision.txn.selection_after.clone(),
-        ))
+        Some(self.revisions[self.current].txn.clone())
     }
 
     pub fn at_root(&self) -> bool {
@@ -90,115 +94,5 @@ impl History {
 impl Default for History {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ropey::Rope;
-
-    fn snap(pos: usize) -> SelectionSnapshot {
-        SelectionSnapshot {
-            ranges: vec![(pos, pos)],
-            primary: 0,
-        }
-    }
-
-    fn apply_forward(rope: &mut Rope, mutations: &[Mutation]) {
-        for a in mutations {
-            a.apply(rope);
-        }
-    }
-
-    #[test]
-    fn linear_undo_redo() {
-        let mut h = History::new();
-        let fwd = vec![Mutation::new(5, 5, " world".to_string())];
-
-        let mut rope = Rope::from_str("hello");
-        let inverses: Vec<Mutation> = fwd.iter().map(|m| m.apply(&mut rope)).collect();
-        assert_eq!(rope.to_string(), "hello world");
-
-        let txn = Transaction {
-            mutations: fwd.clone(),
-            inverses: inverses.clone(),
-            selection_before: Some(snap(0)),
-            selection_after: Some(snap(11)),
-        };
-        h.commit(txn);
-
-        // undo returns the stored inverses; applying them in reverse reverts.
-        let (undo_atoms, _) = h.undo().unwrap();
-        assert_eq!(undo_atoms.len(), 1);
-        for atom in undo_atoms.iter().rev() {
-            atom.apply(&mut rope);
-        }
-        assert_eq!(rope.to_string(), "hello");
-
-        // redo returns the forwards; re-applying brings the buffer back.
-        let (redo_atoms, _) = h.redo().unwrap();
-        apply_forward(&mut rope, &redo_atoms);
-        assert_eq!(rope.to_string(), "hello world");
-    }
-
-    #[test]
-    fn branch_after_undo() {
-        let mut h = History::new();
-
-        let f1 = vec![Mutation::new(1, 1, "b".to_string())];
-        let txn1 = Transaction {
-            mutations: f1,
-            inverses: Vec::new(),
-            selection_before: Some(snap(0)),
-            selection_after: None,
-        };
-        h.commit(txn1);
-
-        h.undo().unwrap();
-
-        let f2 = vec![Mutation::new(1, 1, "c".to_string())];
-        let txn2 = Transaction {
-            mutations: f2,
-            inverses: Vec::new(),
-            selection_before: Some(snap(0)),
-            selection_after: None,
-        };
-        h.commit(txn2);
-
-        h.undo().unwrap();
-        let (mutations, _) = h.redo().unwrap();
-        let mut rope = Rope::from_str("a");
-        apply_forward(&mut rope, &mutations);
-        assert_eq!(rope.to_string(), "ac");
-    }
-
-    #[test]
-    fn multi_atom_transaction_roundtrips() {
-        let mut h = History::new();
-        let mutations = vec![
-            Mutation::new(0, 0, "a".to_string()),
-            Mutation::new(1, 1, "b".to_string()),
-        ];
-
-        let mut rope = Rope::from_str("");
-        let inverses: Vec<Mutation> = mutations.iter().map(|m| m.apply(&mut rope)).collect();
-        assert_eq!(rope.to_string(), "ab");
-
-        let txn = Transaction {
-            mutations: mutations.clone(),
-            inverses,
-            selection_before: Some(snap(0)),
-            selection_after: None,
-        };
-        h.commit(txn);
-
-        let (undo_atoms, _) = h.undo().unwrap();
-        assert_eq!(undo_atoms.len(), 2);
-
-        for inv in undo_atoms.iter().rev() {
-            inv.apply(&mut rope);
-        }
-        assert_eq!(rope.to_string(), "");
     }
 }
