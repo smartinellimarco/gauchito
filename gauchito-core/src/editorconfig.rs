@@ -1,22 +1,15 @@
-// TODO: todo el flujo de lang config / editorconfig / infer / standarization on load no se hace
 use std::path::Path;
 
-use ec4rs::property::{EndOfLine, FinalNewline, TrimTrailingWs};
-use crate::options::LineEnding;
+use ec4rs::property::{
+    EndOfLine, FinalNewline, IndentSize, IndentStyle as EcIndentStyle, TabWidth, TrimTrailingWs,
+};
 
-/// Overrides from `.editorconfig`. `None` means "not specified, use sniffed value".
-#[derive(Debug, Default)]
-pub struct EditorConfigRules {
-    pub line_ending: Option<LineEnding>,
-    pub final_newline: Option<bool>,
-    pub trim_trailing_whitespace: Option<bool>,
-}
+use crate::document::{IndentStyle, LineEnding};
+use crate::options::PartialDocumentOptions;
 
-/// Read `.editorconfig` files for the given path and convert to our rules type.
-pub fn rules_for(path: &Path) -> EditorConfigRules {
-    let props = match ec4rs::properties_of(path) {
-        Ok(p) => p,
-        Err(_) => return EditorConfigRules::default(),
+pub fn rules_for(path: &Path) -> PartialDocumentOptions {
+    let Ok(props) = ec4rs::properties_of(path) else {
+        return PartialDocumentOptions::default();
     };
 
     let line_ending = props.get::<EndOfLine>().ok().map(|eol| match eol {
@@ -34,9 +27,38 @@ pub fn rules_for(path: &Path) -> EditorConfigRules {
         .ok()
         .map(|TrimTrailingWs::Value(b)| b);
 
-    EditorConfigRules {
+    let style = props.get::<EcIndentStyle>().ok();
+    let size = props.get::<IndentSize>().ok();
+    let tab_width_prop = props.get::<TabWidth>().ok().map(|TabWidth::Value(n)| n);
+
+    let indent = match (style, size) {
+        (Some(EcIndentStyle::Tabs), _) => Some(IndentStyle {
+            unit: "\t".to_string(),
+            tab_width: tab_width_prop.unwrap_or(8) as u8,
+        }),
+        (Some(EcIndentStyle::Spaces), Some(IndentSize::Value(n))) => Some(IndentStyle {
+            unit: " ".repeat(n),
+            tab_width: tab_width_prop.unwrap_or(n) as u8,
+        }),
+        (Some(EcIndentStyle::Spaces), _) => Some(IndentStyle {
+            unit: "    ".to_string(),
+            tab_width: tab_width_prop.unwrap_or(4) as u8,
+        }),
+        (None, Some(IndentSize::Value(n))) => Some(IndentStyle {
+            unit: " ".repeat(n),
+            tab_width: tab_width_prop.unwrap_or(n) as u8,
+        }),
+        (None, _) => tab_width_prop.map(|w| IndentStyle {
+            unit: "    ".to_string(),
+            tab_width: w as u8,
+        }),
+    };
+
+    PartialDocumentOptions {
         line_ending,
         final_newline,
+        bom: None,
         trim_trailing_whitespace,
+        indent,
     }
 }
