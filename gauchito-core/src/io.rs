@@ -78,7 +78,7 @@ pub fn load(path: PathBuf) -> io::Result<Document> {
     Ok(Document::new(rope, Some(path), options))
 }
 
-pub fn write(doc: &Document) -> io::Result<()> {
+pub fn write(doc: &mut Document) -> io::Result<()> {
     let path = doc
         .path()
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "document has no file path"))?;
@@ -126,5 +126,7 @@ pub fn write(doc: &Document) -> io::Result<()> {
         }
     }
 
-    w.flush()
+    w.flush()?;
+    doc.modified = false;
+    Ok(())
 }

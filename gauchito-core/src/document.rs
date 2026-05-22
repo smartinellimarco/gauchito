@@ -65,6 +65,7 @@ pub struct Document {
     pub anchors: AnchorTable,
     pub options: DocumentOptions,
     pub revision: u64,
+    pub modified: bool,
     path: Option<PathBuf>,
 }
 
@@ -77,6 +78,7 @@ impl Document {
             path,
             options,
             revision: 0,
+            modified: false,
         }
     }
 
@@ -97,6 +99,7 @@ impl Document {
 
         self.anchors.apply(atom);
         self.revision += 1;
+        self.modified = true;
 
         inverse
     }
