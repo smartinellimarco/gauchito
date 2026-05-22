@@ -3,46 +3,11 @@ use std::path::{Path, PathBuf};
 
 use ropey::{Rope, RopeBuilder};
 
-use crate::document::Document;
+use crate::document::{Document, DocumentOptions, LineEnding};
 use crate::editorconfig;
-use crate::options::{DocumentOptions, LineEnding};
+use crate::options::PartialDocumentOptions;
 
-pub fn load(path: PathBuf) -> io::Result<Document> {
-    let path = std::fs::canonicalize(&path).unwrap_or(path);
-    let rules = editorconfig::rules_for(&path);
-
-    let (text, options) = if path.exists() {
-        let (rope, line_ending, final_newline, bom) = read_and_sniff(&path)?;
-        let options = DocumentOptions::resolve(
-            line_ending,
-            final_newline,
-            bom,
-            rules.line_ending,
-            rules.final_newline,
-            rules.trim_trailing_whitespace,
-        );
-        (rope, options)
-    } else {
-        let options = DocumentOptions::resolve(
-            LineEnding::Lf,
-            true,
-            false,
-            rules.line_ending,
-            rules.final_newline,
-            rules.trim_trailing_whitespace,
-        );
-        (Rope::new(), options)
-    };
-
-    let mut doc = Document::from_rope(text);
-    doc.path = Some(path);
-    doc.options = options;
-    Ok(doc)
-}
-
-/// Read a file line-by-line, sniffing BOM, line-ending style, and final newline.
-/// Returns the rope (with `\r\n` normalized to `\n`) and the sniffed properties.
-fn read_and_sniff(path: &Path) -> io::Result<(Rope, LineEnding, bool, bool)> {
+pub fn read(path: &Path) -> io::Result<(Rope, PartialDocumentOptions)> {
     let file = std::fs::File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut builder = RopeBuilder::new();
@@ -52,12 +17,14 @@ fn read_and_sniff(path: &Path) -> io::Result<(Rope, LineEnding, bool, bool)> {
     let mut bom = false;
     let mut line_ending = LineEnding::Lf;
     let mut final_newline = false;
+    let mut saw_any_line = false;
 
     loop {
         buf.clear();
         if reader.read_line(&mut buf)? == 0 {
             break;
         }
+        saw_any_line = true;
 
         if first {
             first = false;
@@ -82,13 +49,38 @@ fn read_and_sniff(path: &Path) -> io::Result<(Rope, LineEnding, bool, bool)> {
         builder.append(&buf);
     }
 
-    Ok((builder.finish(), line_ending, final_newline, bom))
+    let sniffed = PartialDocumentOptions {
+        line_ending: saw_any_line.then_some(line_ending),
+        final_newline: saw_any_line.then_some(final_newline),
+        bom: Some(bom),
+        trim_trailing_whitespace: None,
+        indent: None,
+    };
+
+    Ok((builder.finish(), sniffed))
+}
+
+pub fn load(path: PathBuf) -> io::Result<Document> {
+    let path = std::fs::canonicalize(&path).unwrap_or(path);
+
+    let (rope, options) = if path.exists() {
+        let (rope, sniffed) = read(&path)?;
+        let options = PartialDocumentOptions::default()
+            .merge(editorconfig::rules_for(&path))
+            .merge(sniffed)
+            .resolve(DocumentOptions::default());
+        (rope, options)
+    } else {
+        let options = editorconfig::rules_for(&path).resolve(DocumentOptions::default());
+        (Rope::new(), options)
+    };
+
+    Ok(Document::new(rope, Some(path), options))
 }
 
 pub fn write(doc: &Document) -> io::Result<()> {
     let path = doc
-        .path
-        .as_ref()
+        .path()
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "document has no file path"))?;
 
     let file = std::fs::File::create(path)?;
@@ -98,12 +90,17 @@ pub fn write(doc: &Document) -> io::Result<()> {
         w.write_all("\u{feff}".as_bytes())?;
     }
 
-    let sep = doc.options.line_ending.as_str();
+    let sep = {
+        let this = doc.options.line_ending;
+        match this {
+            LineEnding::Lf => "\n",
+            LineEnding::Crlf => "\r\n",
+        }
+    };
 
     for line in doc.text.lines() {
         let mut content: String = line.chars().collect();
 
-        // Strip the trailing \n that ropey keeps on every line except possibly the last.
         let had_newline = content.ends_with('\n');
         if had_newline {
             content.pop();
@@ -121,7 +118,6 @@ pub fn write(doc: &Document) -> io::Result<()> {
         }
     }
 
-    // Final newline policy.
     if doc.options.final_newline {
         let len = doc.text.len_chars();
         let ends_with_nl = len > 0 && doc.text.char(len - 1) == '\n';

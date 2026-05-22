@@ -1,56 +1,43 @@
-/// Line ending style for a file on disk.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LineEnding {
-    Lf,
-    Crlf,
+use crate::document::{DocumentOptions, IndentStyle, LineEnding};
+
+#[derive(Debug, Default, Clone)]
+pub struct PartialDocumentOptions {
+    pub line_ending: Option<LineEnding>,
+    pub final_newline: Option<bool>,
+    pub bom: Option<bool>,
+    pub trim_trailing_whitespace: Option<bool>,
+    pub indent: Option<IndentStyle>,
 }
 
-impl LineEnding {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            LineEnding::Lf => "\n",
-            LineEnding::Crlf => "\r\n",
+impl PartialDocumentOptions {
+    pub fn merge(mut self, other: PartialDocumentOptions) -> Self {
+        if other.line_ending.is_some() {
+            self.line_ending = other.line_ending;
         }
-    }
-}
-
-/// Resolved file-format options stored on `Document`, applied at save time.
-#[derive(Debug, Clone)]
-pub struct DocumentOptions {
-    pub line_ending: LineEnding,
-    pub final_newline: bool,
-    pub bom: bool,
-    pub trim_trailing_whitespace: bool,
-}
-
-impl Default for DocumentOptions {
-    fn default() -> Self {
-        Self {
-            line_ending: LineEnding::Lf,
-            final_newline: true,
-            bom: false,
-            trim_trailing_whitespace: false,
+        if other.final_newline.is_some() {
+            self.final_newline = other.final_newline;
         }
+        if other.bom.is_some() {
+            self.bom = other.bom;
+        }
+        if other.trim_trailing_whitespace.is_some() {
+            self.trim_trailing_whitespace = other.trim_trailing_whitespace;
+        }
+        if other.indent.is_some() {
+            self.indent = other.indent;
+        }
+        self
     }
-}
 
-// TODO: this should be a responsability of file IO
-impl DocumentOptions {
-    /// Merge sniffed file properties with overrides.
-    /// Overrides take precedence; anything unspecified falls back to what was observed.
-    pub(crate) fn resolve(
-        line_ending: LineEnding,
-        final_newline: bool,
-        bom: bool,
-        override_line_ending: Option<LineEnding>,
-        override_final_newline: Option<bool>,
-        override_trim_trailing_ws: Option<bool>,
-    ) -> Self {
-        Self {
-            line_ending: override_line_ending.unwrap_or(line_ending),
-            final_newline: override_final_newline.unwrap_or(final_newline),
-            bom,
-            trim_trailing_whitespace: override_trim_trailing_ws.unwrap_or(false),
+    pub fn resolve(self, base: DocumentOptions) -> DocumentOptions {
+        DocumentOptions {
+            line_ending: self.line_ending.unwrap_or(base.line_ending),
+            final_newline: self.final_newline.unwrap_or(base.final_newline),
+            bom: self.bom.unwrap_or(base.bom),
+            trim_trailing_whitespace: self
+                .trim_trailing_whitespace
+                .unwrap_or(base.trim_trailing_whitespace),
+            indent: self.indent.unwrap_or(base.indent),
         }
     }
 }
