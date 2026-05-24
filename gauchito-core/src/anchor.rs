@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::atom::{Atom, phi};
+use crate::splice::{Splice, phi};
 
 static NEXT_ANCHOR_ID: AtomicUsize = AtomicUsize::new(1);
 
@@ -44,9 +44,9 @@ impl AnchorTable {
         }
     }
 
-    pub fn apply(&mut self, m: &Atom) {
+    pub fn apply(&mut self, s: &Splice) {
         for offset in self.entries.values_mut() {
-            *offset = phi(m, *offset);
+            *offset = phi(s, *offset);
         }
     }
 

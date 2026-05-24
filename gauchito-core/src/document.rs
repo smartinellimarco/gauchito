@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use ropey::Rope;
 
 use crate::anchor::AnchorTable;
-use crate::atom::Atom;
+use crate::splice::Splice;
 
 static NEXT_DOCUMENT_ID: AtomicUsize = AtomicUsize::new(1);
 
@@ -94,10 +94,10 @@ impl Document {
         self.path = path;
     }
 
-    pub fn apply(&mut self, atom: &Atom) -> Atom {
-        let inverse = atom.apply(&mut self.text);
+    pub fn apply(&mut self, splice: &Splice) -> Splice {
+        let inverse = splice.apply(&mut self.text);
 
-        self.anchors.apply(atom);
+        self.anchors.apply(splice);
         self.revision += 1;
         self.modified = true;
 

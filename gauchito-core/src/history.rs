@@ -1,4 +1,4 @@
-use crate::atom::Atom;
+use crate::splice::Splice;
 
 #[derive(Clone)]
 pub struct SelectionSnapshot {
@@ -8,8 +8,8 @@ pub struct SelectionSnapshot {
 
 #[derive(Clone)]
 pub struct Transaction {
-    pub atoms: Vec<Atom>,
-    pub inverses: Vec<Atom>,
+    pub splices: Vec<Splice>,
+    pub inverses: Vec<Splice>,
     pub selection_before: Option<SelectionSnapshot>,
     pub selection_after: Option<SelectionSnapshot>,
 }
@@ -17,7 +17,7 @@ pub struct Transaction {
 impl Transaction {
     pub fn empty() -> Self {
         Transaction {
-            atoms: Vec::new(),
+            splices: Vec::new(),
             inverses: Vec::new(),
             selection_before: None,
             selection_after: None,
@@ -25,7 +25,7 @@ impl Transaction {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.atoms.is_empty()
+        self.splices.is_empty()
     }
 }
 
