@@ -1,0 +1,22 @@
+.{
+    .name = .gauchito,
+    .version = "0.0.0",
+    .fingerprint = 0x387a4f0d14da5012,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .egwalker = .{ .path = "../eg-walker.zig" },
+        .zlua = .{
+            .url = "git+https://github.com/natecraddock/ziglua#9ae39fa50b1ab8427d35f963216116d7bff1e584",
+            .hash = "zlua-0.1.0-hGRpC1mUBQCNQf4CnmRTM4I7gxE3YpCvZ-p2EarlcyER",
+        },
+        .vaxis = .{
+            .url = "git+https://github.com/rockorager/libvaxis#173a890d1394946b5d7623c66cd34bcd36d8eeb8",
+            .hash = "vaxis-0.6.0-BWNV_OybDABnzf12gCPzy_IgAjkKkonDJF-2O_7XyLtD",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
