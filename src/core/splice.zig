@@ -31,6 +31,23 @@ pub fn phi(s: Splice, r: u32, gravity: Gravity) u32 {
     @panic("todo");
 }
 
+// TODO move one position through a run of splices, in order. This is the only
+// projection in the editor: the splices come from your own edit or from a
+// merge, and pins, selections and decorations all ride it.
+pub fn position(pos: u32, gravity: Gravity, splices: []const Splice) u32 {
+    _ = .{ pos, gravity, splices };
+    @panic("todo");
+}
+
+// TODO the same for many positions in one pass over the splices instead of one
+// pass per position. Rewrites in place.
+// Careful: the result is no longer sorted when two positions with opposite
+// gravity collapse onto the same splice.
+pub fn positions(slots: []u32, gravity: Gravity, splices: []const Splice) void {
+    _ = .{ slots, gravity, splices };
+    @panic("todo");
+}
+
 const testing = std.testing;
 const left: Gravity = .left;
 const right: Gravity = .right;
@@ -90,4 +107,36 @@ test "an identity splice is the one that changes nothing" {
     try testing.expect(Splice.init(4, 4, "").isIdentity());
     try testing.expect(!Splice.init(4, 4, "x").isIdentity());
     try testing.expect(!Splice.init(4, 5, "").isIdentity());
+}
+
+test "a position before every splice stays where it is" {
+    const splices = [_]Splice{ .init(10, 12, "AB"), .init(20, 20, "C") };
+    try testing.expectEqual(@as(u32, 4), position(4, right, &splices));
+}
+
+test "splices apply in order, each one on the result of the last" {
+    // "hello world" -> delete "world" -> insert "there": the second splice
+    // speaks about positions that only exist after the first one ran.
+    const splices = [_]Splice{ .init(6, 11, ""), .init(6, 6, "there") };
+    try testing.expectEqual(@as(u32, 11), position(6, right, &splices));
+    try testing.expectEqual(@as(u32, 2), position(2, right, &splices));
+}
+
+test "gravity decides what happens at a splice that starts on the position" {
+    const splices = [_]Splice{.init(3, 3, "XY")};
+    try testing.expectEqual(@as(u32, 3), position(3, left, &splices));
+    try testing.expectEqual(@as(u32, 5), position(3, right, &splices));
+}
+
+test "a delete that covers the position leaves it on the start of the hole" {
+    const splices = [_]Splice{.init(2, 8, "")};
+    try testing.expectEqual(@as(u32, 2), position(5, right, &splices));
+    try testing.expectEqual(@as(u32, 2), position(5, left, &splices));
+}
+
+test "many positions move in one pass" {
+    const splices = [_]Splice{ .init(0, 0, "XY"), .init(9, 12, "") };
+    var cursors = [_]u32{ 0, 4, 20 };
+    positions(&cursors, right, &splices);
+    try testing.expectEqualSlices(u32, &.{ 2, 6, 19 }, &cursors);
 }
