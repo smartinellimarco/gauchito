@@ -5,6 +5,7 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .egwalker = .{ .path = "../eg-walker.zig" },
+        .rope = .{ .path = "../rope.zig" },
         .zlua = .{
             .url = "git+https://github.com/natecraddock/ziglua#9ae39fa50b1ab8427d35f963216116d7bff1e584",
             .hash = "zlua-0.1.0-hGRpC1mUBQCNQf4CnmRTM4I7gxE3YpCvZ-p2EarlcyER",

@@ -1,5 +1,6 @@
 const std = @import("std");
 const egwalker = @import("egwalker");
+const rope = @import("rope");
 const splice = @import("../core/splice.zig");
 const patch_mod = @import("patch.zig");
 
@@ -61,16 +62,16 @@ pub const Doc = struct {
 
 const testing = std.testing;
 
-fn textOf(gpa: std.mem.Allocator, doc: *Doc, into: *egwalker.Text) ![]u8 {
+fn textOf(gpa: std.mem.Allocator, doc: *Doc, into: *rope.Text) ![]u8 {
     const out = try doc.merge(gpa);
     defer gpa.free(out);
 
     for (out) |s| {
         if (s.q > s.p) into.delete(s.p, s.q - s.p);
-        if (s.text.len > 0) try into.insertUtf8(s.p, s.text);
+        if (s.text.len > 0) try into.insert(s.p, s.text);
     }
 
-    return into.toUtf8(gpa);
+    return into.toBytes(gpa);
 }
 
 test "local edits come back as splices that rebuild the text" {
@@ -83,7 +84,7 @@ test "local edits come back as splices that rebuild the text" {
     try doc.delete(5, 6);
     try doc.insert(5, " there");
 
-    var text: egwalker.Text = try .init(gpa);
+    var text: rope.Text = try .init(gpa);
     defer text.deinit();
 
     const out = try textOf(gpa, &doc, &text);
@@ -130,9 +131,9 @@ test "two replicas that exchange bytes converge" {
     try a.receive(b_bytes);
     try b.receive(a_bytes);
 
-    var text_a: egwalker.Text = try .init(gpa);
+    var text_a: rope.Text = try .init(gpa);
     defer text_a.deinit();
-    var text_b: egwalker.Text = try .init(gpa);
+    var text_b: rope.Text = try .init(gpa);
     defer text_b.deinit();
 
     const out_a = try textOf(gpa, &a, &text_a);

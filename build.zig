@@ -5,6 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const egwalker = b.dependency("egwalker", .{ .target = target, .optimize = optimize });
+    const rope = b.dependency("rope", .{ .target = target, .optimize = optimize });
     const zlua = b.dependency("zlua", .{ .target = target, .optimize = optimize });
     const vaxis = b.dependency("vaxis", .{ .target = target, .optimize = optimize });
 
@@ -14,6 +15,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "egwalker", .module = egwalker.module("egwalker") },
+            .{ .name = "rope", .module = rope.module("rope") },
             .{ .name = "zlua", .module = zlua.module("zlua") },
             .{ .name = "vaxis", .module = vaxis.module("vaxis") },
         },
