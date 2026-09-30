@@ -5,11 +5,13 @@ A Lua API to build your own terminal editor. The binary is `gau`.
 ## Install
 
 ```sh
+brew install smartinellimarco/tap/gauchito
+curl -LsSf https://github.com/smartinellimarco/gauchito/releases/latest/download/gauchito-cli-installer.sh | sh
 cargo install gauchito-cli
 ```
 
-Or grab a binary from the GitHub releases. Lua is vendored, nothing else to
-install.
+Binaries for macOS arm64 and Linux x86_64/arm64 are on the GitHub releases.
+Lua is vendored, nothing else to install.
 
 ## Config
 
