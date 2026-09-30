@@ -8,7 +8,7 @@ build:
 
 # Run TUI
 run *args:
-    cargo run -q -p gauchito-cli -- {{ args }}
+    cargo run -q -p cli -- {{ args }}
 
 # Run tests
 test:

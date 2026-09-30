@@ -1,0 +1,13 @@
+[package]
+name    = "script"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+engine    = { path = "../engine" }
+ui        = { path = "../ui" }
+mlua      = { version = "0.12.1", features = ["lua54", "vendored", "async"] }
+ropey     = { workspace = true }
+crossterm = "0.29"
+tokio     = { workspace = true }

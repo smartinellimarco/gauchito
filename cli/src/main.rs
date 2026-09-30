@@ -1,6 +1,6 @@
 use crossterm::event::{Event, EventStream, KeyEventKind};
 use futures::StreamExt;
-use gauchito_script::ScriptRuntime;
+use script::ScriptRuntime;
 
 // One thread: Lua is not Send, so every task runs on this LocalSet.
 #[tokio::main(flavor = "current_thread")]
@@ -15,7 +15,7 @@ async fn main() {
 
 async fn run(argv: Vec<String>) -> anyhow::Result<()> {
     let script = ScriptRuntime::new(argv)?;
-    script.load_config(&gauchito_script::user_config_path())?;
+    script.load_config(&script::user_config_path())?;
 
     // Let the config's first task run, so a config that only prints and quits never opens the terminal.
     tokio::task::yield_now().await;
