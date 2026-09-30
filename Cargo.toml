@@ -11,8 +11,8 @@ members = [
 version    = "0.1.0"
 edition    = "2024"
 license    = "MIT"
-repository = "https://github.com/smartinellimarco/gauchito"
-homepage   = "https://github.com/smartinellimarco/gauchito"
+repository = "https://github.com/gauchito-editor/gauchito"
+homepage   = "https://github.com/gauchito-editor/gauchito"
 
 [workspace.dependencies]
 gauchito-core   = { path = "gauchito-core", version = "0.1.0" }
