@@ -1,24 +1,63 @@
-//! Gauchito CLI entry point.
-//!
-//! Single-thread tokio runtime (`new_current_thread`) — the
-//! substrate promises one Lua state on the main thread, and Lua
-//! coroutines never cross threads. Running tokio on the same thread
-//! keeps that promise cheap: no `LocalSet`, no worker pool. Async
-//! producers wake on mpsc; the main thread resumes coroutines.
+use crossterm::event::{Event, EventStream, KeyEventKind};
+use futures::StreamExt;
+use gauchito_script::ScriptRuntime;
 
-mod app;
-
-fn main() {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_time()
-        .enable_io()
-        .build()
-        .unwrap();
-
-    if let Err(e) = rt.block_on(app::run(argv)) {
-        eprintln!("error: {e}");
+// One thread: Lua is not Send, so every task runs on this LocalSet.
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    let argv = std::env::args().skip(1).collect();
+    let result = tokio::task::LocalSet::new().run_until(run(argv)).await;
+    if let Err(e) = result {
+        eprintln!("gau: {e}");
         std::process::exit(1);
+    }
+}
+
+async fn run(argv: Vec<String>) -> anyhow::Result<()> {
+    let script = ScriptRuntime::new(argv)?;
+    script.load_config(&gauchito_script::user_config_path())?;
+
+    // Let the config's first task run, so a config that only prints and quits never opens the terminal.
+    tokio::task::yield_now().await;
+    if script.done() {
+        return check(&script);
+    }
+
+    let mut terminal = ratatui::init();
+    let result = event_loop(&script, &mut terminal).await;
+    ratatui::restore();
+    result
+}
+
+async fn event_loop(
+    script: &ScriptRuntime,
+    terminal: &mut ratatui::DefaultTerminal,
+) -> anyhow::Result<()> {
+    let mut events = EventStream::new();
+    loop {
+        check(script)?;
+        if script.done() {
+            return Ok(());
+        }
+
+        let frame = script.frame();
+        terminal.draw(|f| frame.borrow().flush(f))?;
+
+        tokio::select! {
+            event = events.next() => match event {
+                Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press => script.feed_key(key),
+                Some(Err(e)) => return Err(e.into()),
+                None => return Ok(()),
+                _ => {}
+            },
+            _ = script.woken() => {}
+        }
+    }
+}
+
+fn check(script: &ScriptRuntime) -> anyhow::Result<()> {
+    match script.error() {
+        Some(e) => Err(anyhow::anyhow!(e)),
+        None => Ok(()),
     }
 }
