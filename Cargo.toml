@@ -20,3 +20,7 @@ gauchito-script = { path = "gauchito-script", version = "0.1.0" }
 ropey           = "2.0.0-beta.1"
 tokio           = { version = "1", features = ["full"] }
 
+[profile.release]
+lto           = true
+codegen-units = 1
+strip         = true
