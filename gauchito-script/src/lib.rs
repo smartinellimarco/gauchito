@@ -166,7 +166,9 @@ fn keys_table(lua: &Lua, rx: mpsc::UnboundedReceiver<KeyEvent>) -> LuaResult<Lua
             async move {
                 match rx.lock().await.recv().await {
                     Some(event) => key_table(&lua, event),
-                    None => Err(LuaError::runtime("keys.read: the host stopped sending keys")),
+                    None => Err(LuaError::runtime(
+                        "keys.read: the host stopped sending keys",
+                    )),
                 }
             }
         })?,
@@ -254,7 +256,9 @@ fn selection_table(lua: &Lua) -> LuaResult<LuaTable> {
         "new",
         lua.create_function(|_, ranges: Vec<LuaTable>| {
             if ranges.is_empty() {
-                return Err(LuaError::runtime("selection.new: at least one range required"));
+                return Err(LuaError::runtime(
+                    "selection.new: at least one range required",
+                ));
             }
             let ranges = ranges
                 .iter()
@@ -272,7 +276,9 @@ fn splice_table(lua: &Lua) -> LuaResult<LuaTable> {
         "new",
         lua.create_function(|_, (p, q, text): (usize, usize, String)| {
             if p > q {
-                return Err(LuaError::runtime(format!("splice.new: p ({p}) must be <= q ({q})")));
+                return Err(LuaError::runtime(format!(
+                    "splice.new: p ({p}) must be <= q ({q})"
+                )));
             }
             Ok(LuaSplice(Splice::new(p, q, text)))
         })?,
@@ -290,15 +296,18 @@ impl LuaUserData for LuaBuffer {
     }
 
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("apply", |_, this, splices: Vec<LuaUserDataRef<LuaSplice>>| {
-            let mut buf = borrow_mut(this)?;
-            for s in splices {
-                boundary(&buf, s.0.p())?;
-                boundary(&buf, s.0.q())?;
-                buf.apply(&s.0);
-            }
-            Ok(())
-        });
+        methods.add_method(
+            "apply",
+            |_, this, splices: Vec<LuaUserDataRef<LuaSplice>>| {
+                let mut buf = borrow_mut(this)?;
+                for s in splices {
+                    boundary(&buf, s.0.p())?;
+                    boundary(&buf, s.0.q())?;
+                    buf.apply(&s.0);
+                }
+                Ok(())
+            },
+        );
 
         methods.add_method("len", |_, this, ()| Ok(this.0.borrow().text.len()));
 
@@ -326,7 +335,12 @@ impl LuaUserData for LuaBuffer {
             if n >= buf.text.len_lines(LINES) {
                 return Ok(String::new());
             }
-            let line: String = buf.text.line(n, LINES).chars().take_while(|&c| c != '\n').collect();
+            let line: String = buf
+                .text
+                .line(n, LINES)
+                .chars()
+                .take_while(|&c| c != '\n')
+                .collect();
             Ok(line.trim_end_matches('\r').to_string())
         });
 
@@ -409,7 +423,9 @@ fn boundary(buf: &Buffer, pos: usize) -> LuaResult<usize> {
     if pos <= buf.text.len() && buf.text.is_char_boundary(pos) {
         Ok(pos)
     } else {
-        Err(LuaError::runtime(format!("position {pos} is not a char boundary")))
+        Err(LuaError::runtime(format!(
+            "position {pos} is not a char boundary"
+        )))
     }
 }
 
@@ -436,14 +452,17 @@ impl LuaUserData for LuaView {
 
     // The old selection's pins go back to the buffer before the new ones are issued.
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("set_selection", |_, this, sel: LuaUserDataRef<LuaSelection>| {
-            let buf = this.0.borrow().buf.clone();
-            let mut buf = buf.borrow_mut();
-            let selection = Selection::from_snapshot(&mut buf.pins, &sel.0);
-            let mut old = std::mem::replace(&mut this.0.borrow_mut().selection, selection);
-            old.drop(&mut buf.pins);
-            Ok(())
-        });
+        methods.add_method(
+            "set_selection",
+            |_, this, sel: LuaUserDataRef<LuaSelection>| {
+                let buf = this.0.borrow().buf.clone();
+                let mut buf = buf.borrow_mut();
+                let selection = Selection::from_snapshot(&mut buf.pins, &sel.0);
+                let mut old = std::mem::replace(&mut this.0.borrow_mut().selection, selection);
+                old.drop(&mut buf.pins);
+                Ok(())
+            },
+        );
     }
 }
 
@@ -557,7 +576,12 @@ impl LuaUserData for LuaFrame {
 }
 
 fn rect(t: &LuaTable) -> LuaResult<Rect> {
-    Ok(Rect::new(t.get("x")?, t.get("y")?, t.get("w")?, t.get("h")?))
+    Ok(Rect::new(
+        t.get("x")?,
+        t.get("y")?,
+        t.get("w")?,
+        t.get("h")?,
+    ))
 }
 
 fn runs_from_lua(value: LuaValue) -> LuaResult<Vec<Run>> {
@@ -581,7 +605,9 @@ fn runs_from_lua(value: LuaValue) -> LuaResult<Vec<Run>> {
         LuaValue::String(_) => Ok(vec![run(value)?]),
         LuaValue::Table(t) => t.sequence_values::<LuaValue>().map(|v| run(v?)).collect(),
         LuaValue::Nil => Ok(Vec::new()),
-        _ => Err(LuaError::runtime("frame:text expects a string or list of runs")),
+        _ => Err(LuaError::runtime(
+            "frame:text expects a string or list of runs",
+        )),
     }
 }
 
@@ -677,7 +703,10 @@ mod tests {
 
     // Lets the tasks run until nothing has woken the host for a while.
     async fn settle(rt: &ScriptRuntime) {
-        while tokio::time::timeout(Duration::from_millis(20), rt.woken()).await.is_ok() {}
+        while tokio::time::timeout(Duration::from_millis(20), rt.woken())
+            .await
+            .is_ok()
+        {}
     }
 
     fn eval<T: FromLuaMulti>(rt: &ScriptRuntime, source: &str) -> T {
@@ -712,8 +741,13 @@ mod tests {
     #[test]
     fn a_missing_config_is_an_error() {
         let rt = ScriptRuntime::new(vec![]).unwrap();
-        let err = rt.load_config(Path::new("/nonexistent/init.lua")).unwrap_err();
-        assert!(err.0.starts_with("no config at /nonexistent/init.lua"), "{err}");
+        let err = rt
+            .load_config(Path::new("/nonexistent/init.lua"))
+            .unwrap_err();
+        assert!(
+            err.0.starts_with("no config at /nonexistent/init.lua"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -729,7 +763,10 @@ mod tests {
     fn the_config_sees_argv_and_version() {
         let rt = ScriptRuntime::new(vec!["--version".into()]).unwrap();
         assert_eq!(eval::<String>(&rt, "return gauchito.argv[1]"), "--version");
-        assert_eq!(eval::<String>(&rt, "return gauchito.version"), env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            eval::<String>(&rt, "return gauchito.version"),
+            env!("CARGO_PKG_VERSION")
+        );
     }
 
     #[test]
@@ -783,7 +820,10 @@ mod tests {
             )
             .unwrap();
             settle(&rt).await;
-            assert_eq!(eval::<String>(&rt, "return table.concat(log, ',')"), "fast,slow");
+            assert_eq!(
+                eval::<String>(&rt, "return table.concat(log, ',')"),
+                "fast,slow"
+            );
             assert!(rt.done());
         })
     }
@@ -853,6 +893,11 @@ mod tests {
             assert(a.w == 20 and a.h == 5)
             "#,
         );
-        assert!(rt.lua.load("gauchito.frame:box({ x = 0, y = 0, w = 2, h = 2 }, 'wavy')").exec().is_err());
+        assert!(
+            rt.lua
+                .load("gauchito.frame:box({ x = 0, y = 0, w = 2, h = 2 }, 'wavy')")
+                .exec()
+                .is_err()
+        );
     }
 }

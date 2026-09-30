@@ -25,11 +25,19 @@ pub struct Splice {
 impl Splice {
     pub fn new(p: usize, q: usize, text: String) -> Self {
         assert!(p <= q, "Splice::new: p ({p}) must be <= q ({q})");
-        Self { p, q, text, origin: Origin::Local }
+        Self {
+            p,
+            q,
+            text,
+            origin: Origin::Local,
+        }
     }
 
     pub fn remote(p: usize, q: usize, text: String) -> Self {
-        Self { origin: Origin::Remote, ..Self::new(p, q, text) }
+        Self {
+            origin: Origin::Remote,
+            ..Self::new(p, q, text)
+        }
     }
 
     pub fn origin(&self) -> Origin {
@@ -89,8 +97,8 @@ pub fn phi(s: &Splice, r: usize, gravity: Gravity) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::splice::{Gravity, Splice, phi};
     use crate::Buffer;
+    use crate::splice::{Gravity, Splice, phi};
     use ropey::Rope;
 
     const L: Gravity = Gravity::Left;
@@ -150,7 +158,6 @@ mod tests {
         assert_eq!(b.text.to_string(), "hello");
     }
 
-
     #[test]
     fn phi_pure_insert_right_gravity() {
         let m = Splice::new(5, 5, "XY".into());
@@ -189,11 +196,14 @@ mod tests {
         assert_eq!(phi(&m, 8, R), 10);
     }
 
-
     #[test]
     fn phi_pure_insert_left_gravity_stays() {
         let m = Splice::new(5, 5, "XY".into());
-        assert_eq!(phi(&m, 5, L), 5, "insert at pin → left gravity keeps pin in place");
+        assert_eq!(
+            phi(&m, 5, L),
+            5,
+            "insert at pin → left gravity keeps pin in place"
+        );
         assert_eq!(phi(&m, 8, L), 10, "outside range: gravity-independent");
     }
 

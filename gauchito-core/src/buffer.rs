@@ -41,7 +41,6 @@ impl Buffer {
 
         inverse
     }
-
 }
 
 impl Default for Buffer {

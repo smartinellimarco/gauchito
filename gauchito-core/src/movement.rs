@@ -61,7 +61,11 @@ fn visible_chars(text: &RopeSlice, line: usize) -> impl Iterator<Item = char> {
 fn last_visible(text: &RopeSlice, line: usize) -> usize {
     let start = line_start(text, line);
     let end = start + visible_chars(text, line).map(char::len_utf8).sum::<usize>();
-    if end == start { start } else { text.floor_char_boundary(end - 1) }
+    if end == start {
+        start
+    } else {
+        text.floor_char_boundary(end - 1)
+    }
 }
 
 pub fn move_vertical(
@@ -164,7 +168,9 @@ pub fn move_to_line(text: &RopeSlice, line: usize) -> usize {
 }
 
 pub fn visual_column(text: &RopeSlice, pos: usize) -> usize {
-    text.slice(line_start(text, line_of(text, pos))..pos).chars().count()
+    text.slice(line_start(text, line_of(text, pos))..pos)
+        .chars()
+        .count()
 }
 
 pub fn position_at(text: &RopeSlice, line: usize, col: usize) -> usize {
@@ -185,9 +191,9 @@ pub fn visible_line_chars(text: &RopeSlice, line: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use crate::movement::{
-        CharClass, char_class, last_navigable_line, move_first_non_whitespace,
-        move_grapheme, move_line_end, move_line_start, move_to_line, move_vertical,
-        position_at, skip_class_backward, skip_class_forward, visual_column,
+        CharClass, char_class, last_navigable_line, move_first_non_whitespace, move_grapheme,
+        move_line_end, move_line_start, move_to_line, move_vertical, position_at,
+        skip_class_backward, skip_class_forward, visual_column,
     };
     use ropey::Rope;
 
@@ -397,8 +403,10 @@ mod tests {
 
     #[test]
     fn columns_count_chars_and_positions_count_bytes() {
-        let text = rope("ññññ
-    abcd");
+        let text = rope(
+            "ññññ
+    abcd",
+        );
         let t = text.slice(..);
         assert_eq!(visual_column(&t, 6), 3);
         assert_eq!(position_at(&t, 0, 2), 4);
