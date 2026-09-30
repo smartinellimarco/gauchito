@@ -1,0 +1,20 @@
+[package]
+name    = "gauchito-script"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gauchito-core   = { path = "../gauchito-core" }
+gauchito-ui     = { path = "../gauchito-ui" }
+mlua            = { version = "0.11.6", features = ["luau"] }
+ropey           = { workspace = true }
+# crossterm: structured key-event unpacking lives in `task.rs::feed_key`
+# so distros never see crossterm types — they receive a plain Lua table.
+crossterm       = "0.29"
+# Tasks: tokio sleep + mpsc for waking suspended Lua coroutines from
+# spawned futures. The runtime itself is provided by the host.
+tokio           = { workspace = true, features = ["sync", "time", "rt", "macros"] }
+
+[dev-dependencies]
+tokio           = { workspace = true, features = ["sync", "time", "rt", "macros", "test-util"] }
