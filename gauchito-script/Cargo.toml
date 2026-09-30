@@ -1,0 +1,15 @@
+[package]
+name        = "gauchito-script"
+description = "Lua 5.4 runtime and async tasks for the gauchito editor"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[dependencies]
+gauchito-core = { workspace = true }
+gauchito-ui   = { workspace = true }
+mlua          = { version = "0.12.1", features = ["lua54", "vendored", "async"] }
+ropey         = { workspace = true }
+crossterm     = "0.29"
+tokio         = { workspace = true }

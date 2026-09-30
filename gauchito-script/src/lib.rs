@@ -8,21 +8,21 @@ use mlua::prelude::*;
 use ropey::RopeSlice;
 use tokio::sync::{Mutex, Notify, mpsc};
 
-use engine::movement::{
+use gauchito_core::movement::{
     CharClass, LINES, char_class, last_navigable_line, move_doc_end, move_first_non_whitespace,
     move_left, move_left_inline, move_line_end, move_line_start, move_right, move_right_inline,
     move_to_line, move_vertical, position_at, skip_class_backward, skip_class_forward,
     visual_column,
 };
-use engine::selection::SelectionSnapshot;
-use engine::{Buffer, Selection, Splice, View};
-use ui::frame::{BoxChars, BoxCharset, CursorStyle, Frame, Run};
-use ui::{Color, Modifier, Rect, Style};
+use gauchito_core::selection::SelectionSnapshot;
+use gauchito_core::{Buffer, Selection, Splice, View};
+use gauchito_ui::frame::{BoxChars, BoxCharset, CursorStyle, Frame, Run};
+use gauchito_ui::{Color, Modifier, Rect, Style};
 
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub fn user_config_path() -> PathBuf {
-    engine::paths::init_file()
+    gauchito_core::paths::init_file()
 }
 
 #[derive(Debug)]

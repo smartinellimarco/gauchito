@@ -1,0 +1,12 @@
+[package]
+name        = "gauchito-core"
+description = "Buffers, splices, selections and motions for the gauchito editor"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[dependencies]
+ropey                = { workspace = true }
+unicode-segmentation = "1.13"
+dirs                 = "7"

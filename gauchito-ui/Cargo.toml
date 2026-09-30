@@ -1,0 +1,11 @@
+[package]
+name        = "gauchito-ui"
+description = "Frame and terminal renderer for the gauchito editor"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[dependencies]
+ratatui   = { version = "0.30", features = ["crossterm_0_29"] }
+crossterm = "0.29"
