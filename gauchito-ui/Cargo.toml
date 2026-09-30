@@ -1,0 +1,10 @@
+[package]
+name    = "gauchito-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gauchito-core   = { path = "../gauchito-core" }
+ratatui         = { version = "0.30", features = ["crossterm_0_29"] }
+crossterm       = "0.29"
