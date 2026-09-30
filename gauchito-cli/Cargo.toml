@@ -5,6 +5,7 @@ version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
 repository.workspace = true
+homepage.workspace   = true
 
 [[bin]]
 name = "gau"
@@ -17,3 +18,6 @@ crossterm       = { version = "0.29", features = ["event-stream"] }
 anyhow          = "1"
 futures         = "0.3"
 tokio           = { workspace = true }
+
+[package.metadata.dist]
+formula = "gauchito"
