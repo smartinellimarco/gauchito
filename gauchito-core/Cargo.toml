@@ -6,6 +6,5 @@ license.workspace = true
 
 [dependencies]
 ropey                = { workspace = true }
-unicode-segmentation = "1.12.0"
-serde                = { workspace = true }
-dirs                 = "5"
+unicode-segmentation = "1.13"
+dirs                 = "7"
