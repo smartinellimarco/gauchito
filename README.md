@@ -31,9 +31,9 @@ lua-language-server in `script/lua/gauchito.lua`.
 ## Develop
 
 ```sh
-just run [args]   # cargo run -p cli
-just test         # cargo test --workspace
-just lint         # cargo clippy
+cargo run -p cli -- [args]
+cargo test --workspace
+cargo clippy --workspace --all-targets
 ```
 
 Crates: `engine` (buffers, splices, selections, motions), `ui` (frame and
