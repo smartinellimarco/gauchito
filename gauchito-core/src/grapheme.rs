@@ -1,11 +1,3 @@
-//! Grapheme boundaries over a `RopeSlice`.
-//!
-//! `unicode-segmentation`'s `GraphemeCursor` walks contiguous
-//! `&str`; ropey stores text in chunks. The two have to iterate
-//! together: ask the cursor for the next/prev boundary, hand it the
-//! chunk containing the current byte, then follow whichever
-//! `GraphemeIncomplete` direction it asks for next.
-
 use ropey::RopeSlice;
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 

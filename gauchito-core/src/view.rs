@@ -1,15 +1,3 @@
-//! View — a cursor session on a buffer.
-//!
-//! `{ id, buf, selection }` — the entire substrate concept. No
-//! `mode`, no scroll offsets, no `cursor_style`, no `hidden`: all
-//! editor policy is distro Lua. Per-view mode/scroll is a Lua table
-//! keyed by `view.id`; cursor style is a render-time opt; "hidden"
-//! is "the distro chose not to paint it this frame."
-//!
-//! [`Drop`] releases the selection's pins back to the buffer's pin
-//! table — selection pins are scoped to the buffer that issued them,
-//! and forgetting to free them would leak `PinTable` entries forever.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};

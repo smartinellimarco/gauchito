@@ -1,30 +1,3 @@
-//! Pins — durable offsets into a buffer, projected through edits.
-//!
-//! Pins are kept in offset-sorted order so the per-splice apply path
-//! only touches pins that can actually move. A splice at position p
-//! cannot affect any pin with offset < p (φ's first branch returns
-//! the offset unchanged), so we binary-search to the first pin at-or-
-//! after p and walk only the suffix.
-//!
-//! φ is not strictly monotonic: two pins with offsets in [p,q] but
-//! opposite gravity swap order after the splice collapses them to
-//! s.p (Left) vs s.p+n (Right). So apply can't just mutate offsets in
-//! place — the [p,q] section of the suffix has to be re-bucketed by
-//! gravity. Pins originally past s.q shift uniformly and keep order,
-//! so they ride along untouched.
-//!
-//! PERF: worst case is still O(P) (edit at offset 0 moves every
-//! pin), which is unavoidable. The win is typical-case: an edit near
-//! the bottom of a file only touches a small suffix, and multi-cursor
-//! edits in disjoint regions stop re-walking the whole table.
-//!
-//! `pins_in(from, to)` is a flat offset-range query — two binary
-//! searches and a slice. It's the primitive a viewport decoration
-//! query can sit on. Decorations longer than the window (folds,
-//! virtual lines) are not handled by this shape; that workload is
-//! what would justify an interval tree, and it's intentionally out
-//! of scope until those decoration kinds ship.
-
 use std::collections::HashMap;
 
 use crate::splice::{Gravity, Splice, phi};
@@ -42,10 +15,7 @@ struct Entry {
 pub struct PinTable {
     next_id: usize,
     entries: HashMap<PinId, Entry>,
-    // Pin ids sorted by offset. HashMap is the source of truth for
-    // entry data; this Vec is just an ordering index. Internal order
-    // within an equal-offset bucket is unspecified — callers must not
-    // rely on it.
+    // Sorted by offset so apply only walks the pins at or after the splice.
     order: Vec<PinId>,
 }
 
@@ -106,11 +76,7 @@ impl PinTable {
         let entries = &self.entries;
         let suffix_start = self.order.partition_point(|id| entries[id].offset < s.p());
 
-        // Walk the suffix, applying φ in place. Pins originally in
-        // [s.p, s.q] collapse to either s.p or s.p+n, crossing each
-        // other — so segregate them by where they land. Pins
-        // originally > s.q shift uniformly; φ preserves their relative
-        // order, so they go into `tail` as-is.
+        // Pins inside [p, q] collapse to p or p + n and can cross; pins past q keep their order.
         let mut left_collapse = Vec::new();
         let mut right_collapse = Vec::new();
         let mut tail = Vec::new();
@@ -141,7 +107,6 @@ impl PinTable {
         self.order.extend(tail);
     }
 
-    /// Pin ids whose offset lies in `[from, to)`, in index order.
     pub fn pins_in(&self, from: usize, to: usize) -> impl Iterator<Item = PinId> + '_ {
         let entries = &self.entries;
         let start = self.order.partition_point(|id| entries[id].offset < from);
@@ -157,9 +122,6 @@ impl PinTable {
         self.entries.is_empty()
     }
 
-    /// Find `id` in `order`. Binary-searches to the offset bucket
-    /// then linearly scans for the exact id. Buckets are tiny
-    /// in practice (usually 1; pin-per-cursor, pin-per-decoration-end).
     fn locate(&self, id: PinId, entry: Entry) -> Option<usize> {
         let entries = &self.entries;
         let start = self.order.partition_point(|other| entries[other].offset < entry.offset);
@@ -185,5 +147,204 @@ impl PinTable {
         let entries = &self.entries;
         let pos = self.order.partition_point(|other| entries[other].offset <= new.offset);
         self.order.insert(pos, id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pins::PinTable;
+    use crate::splice::{Gravity, Splice};
+
+    #[test]
+    fn add_and_resolve() {
+        let mut t = PinTable::new();
+        let a = t.add(5, Gravity::Right);
+        let b = t.add(10, Gravity::Right);
+
+        assert_eq!(t.offset(a), 5);
+        assert_eq!(t.offset(b), 10);
+        assert_eq!(t.len(), 2);
+    }
+
+    #[test]
+    fn set_offset_mutates_in_place() {
+        let mut t = PinTable::new();
+        let a = t.add(5, Gravity::Right);
+
+        t.set_offset(a, 42);
+
+        assert_eq!(t.offset(a), 42);
+    }
+
+    #[test]
+    fn apply_splice_insert_shifts_after_point() {
+        let mut t = PinTable::new();
+        let before = t.add(2, Gravity::Right);
+        let after = t.add(8, Gravity::Right);
+
+        t.apply(&Splice::new(5, 5, "XX".into()));
+
+        assert_eq!(t.offset(before), 2);
+        assert_eq!(t.offset(after), 10);
+    }
+
+    #[test]
+    fn apply_splice_delete_clamps_and_shifts() {
+        let mut t = PinTable::new();
+        let outside = t.add(2, Gravity::Right);
+        let inside = t.add(7, Gravity::Right);
+        let after = t.add(10, Gravity::Right);
+
+        t.apply(&Splice::new(5, 8, String::new()));
+
+        assert_eq!(t.offset(outside), 2);
+        assert_eq!(t.offset(inside), 5);
+        assert_eq!(t.offset(after), 7);
+    }
+
+    #[test]
+    fn inverse_splice_undoes_anchor_movement() {
+        use crate::Buffer;
+        use ropey::Rope;
+
+        let mut buf = Buffer::new();
+        buf.text = Rope::from_str("abcdef");
+
+        let mut t = PinTable::new();
+        let id = t.add(3, Gravity::Right);
+
+        let splice = Splice::new(1, 1, "ZZ".into());
+        let inverse = buf.apply(&splice);
+
+        t.apply(&splice);
+        assert_eq!(t.offset(id), 5);
+
+        t.apply(&inverse);
+        assert_eq!(t.offset(id), 3);
+    }
+
+    #[test]
+    fn apply_leaves_pins_before_splice_untouched() {
+        let mut t = PinTable::new();
+        let p0 = t.add(0, Gravity::Right);
+        let p3 = t.add(3, Gravity::Right);
+        let p5 = t.add(5, Gravity::Right);
+
+        t.apply(&Splice::new(10, 10, "ABCDE".into()));
+
+        assert_eq!(t.offset(p0), 0);
+        assert_eq!(t.offset(p3), 3);
+        assert_eq!(t.offset(p5), 5);
+    }
+
+    #[test]
+    fn pins_in_returns_offsets_in_range() {
+        let mut t = PinTable::new();
+        let a = t.add(0, Gravity::Right);
+        let b = t.add(5, Gravity::Right);
+        let c = t.add(10, Gravity::Right);
+        let d = t.add(20, Gravity::Right);
+
+        let got: Vec<_> = t.pins_in(5, 15).collect();
+        assert_eq!(got, vec![b, c]);
+        assert!(!got.contains(&a));
+        assert!(!got.contains(&d));
+    }
+
+    #[test]
+    fn pins_in_is_half_open() {
+        let mut t = PinTable::new();
+        let a = t.add(5, Gravity::Right);
+        let _b = t.add(10, Gravity::Right);
+
+        let got: Vec<_> = t.pins_in(5, 10).collect();
+        assert_eq!(got, vec![a]);
+    }
+
+    #[test]
+    fn mixed_gravity_inside_splice_rebuckets() {
+        let mut t = PinTable::new();
+        let right_at_3 = t.add(3, Gravity::Right);
+        let left_at_5 = t.add(5, Gravity::Left);
+        let right_at_7 = t.add(7, Gravity::Right);
+        let left_at_9 = t.add(9, Gravity::Left);
+
+        t.apply(&Splice::new(2, 10, "X".into()));
+
+        assert_eq!(t.offset(left_at_5), 2);
+        assert_eq!(t.offset(left_at_9), 2);
+        assert_eq!(t.offset(right_at_3), 3);
+        assert_eq!(t.offset(right_at_7), 3);
+
+        use std::collections::HashSet;
+        let lefts: HashSet<_> = t.pins_in(2, 3).collect();
+        assert_eq!(lefts, HashSet::from([left_at_5, left_at_9]));
+
+        let rights: HashSet<_> = t.pins_in(3, 4).collect();
+        assert_eq!(rights, HashSet::from([right_at_3, right_at_7]));
+    }
+
+    #[test]
+    fn remove_keeps_index_consistent() {
+        let mut t = PinTable::new();
+        let a = t.add(5, Gravity::Right);
+        let b = t.add(10, Gravity::Right);
+        let c = t.add(15, Gravity::Right);
+
+        t.remove(b);
+
+        let got: Vec<_> = t.pins_in(0, 100).collect();
+        assert_eq!(got, vec![a, c]);
+        assert_eq!(t.len(), 2);
+    }
+
+    #[test]
+    fn set_offset_repositions_in_index() {
+        let mut t = PinTable::new();
+        let a = t.add(5, Gravity::Right);
+        let b = t.add(10, Gravity::Right);
+        let c = t.add(15, Gravity::Right);
+
+        t.set_offset(b, 20);
+
+        let got: Vec<_> = t.pins_in(0, 100).collect();
+        assert_eq!(got, vec![a, c, b]);
+    }
+
+    #[test]
+    fn apply_preserves_tail_order() {
+        let mut t = PinTable::new();
+        let p15 = t.add(15, Gravity::Right);
+        let p20 = t.add(20, Gravity::Right);
+        let p25 = t.add(25, Gravity::Right);
+
+        t.apply(&Splice::new(0, 10, "AB".into()));
+
+        assert_eq!(t.offset(p15), 7);
+        assert_eq!(t.offset(p20), 12);
+        assert_eq!(t.offset(p25), 17);
+
+        let got: Vec<_> = t.pins_in(0, 100).collect();
+        assert_eq!(got, vec![p15, p20, p25]);
+    }
+
+    #[test]
+    fn author_pins_rebucket_by_origin() {
+        let mut t = PinTable::new();
+        let cursor = t.add(5, Gravity::Author);
+        let left = t.add(5, Gravity::Left);
+        let right = t.add(5, Gravity::Right);
+
+        t.apply(&Splice::remote(5, 5, "XY".into()));
+        assert_eq!((t.offset(cursor), t.offset(left), t.offset(right)), (5, 5, 7));
+
+        t.apply(&Splice::new(5, 5, "Z".into()));
+        assert_eq!((t.offset(cursor), t.offset(left), t.offset(right)), (6, 5, 8));
+
+        t.remove(cursor);
+        t.remove(left);
+        t.remove(right);
+        assert!(t.is_empty());
+        assert_eq!(t.pins_in(0, 100).count(), 0);
     }
 }
