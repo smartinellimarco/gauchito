@@ -1,6 +1,4 @@
-.zig-cache/
-zig-pkg/
-zig-out/
+target/
 .DS_Store
 BACKLOG.md
 editor-core-graph.json
