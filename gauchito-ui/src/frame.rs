@@ -74,8 +74,15 @@ pub struct Run {
 }
 
 pub enum PaintOp {
-    Text { area: Rect, runs: Vec<Run> },
-    Fill { area: Rect, ch: char, style: Style },
+    Text {
+        area: Rect,
+        runs: Vec<Run>,
+    },
+    Fill {
+        area: Rect,
+        ch: char,
+        style: Style,
+    },
     Box {
         area: Rect,
         charset: BoxCharset,

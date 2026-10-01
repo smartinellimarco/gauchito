@@ -1,0 +1,16 @@
+[workspace]
+# Release only when the release PR is merged, not on every push to main.
+release_always = false
+changelog_update = false
+git_tag_enable = false
+# dist creates the GitHub release from the tag.
+git_release_enable = false
+
+# One changelog and one vX.Y.Z tag for the whole workspace, carried by the binary crate.
+[[package]]
+name = "gauchito-cli"
+changelog_update = true
+changelog_path = "./CHANGELOG.md"
+changelog_include = ["gauchito-core", "gauchito-ui", "gauchito-script"]
+git_tag_enable = true
+git_tag_name = "v{{ version }}"

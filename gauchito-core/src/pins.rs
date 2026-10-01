@@ -29,7 +29,9 @@ impl PinTable {
         self.next_id += 1;
 
         let entries = &self.entries;
-        let pos = self.order.partition_point(|other| entries[other].offset <= offset);
+        let pos = self
+            .order
+            .partition_point(|other| entries[other].offset <= offset);
 
         self.entries.insert(id, Entry { offset, gravity });
         self.order.insert(pos, id);
@@ -41,7 +43,9 @@ impl PinTable {
     }
 
     pub fn remove(&mut self, id: PinId) {
-        let Some(entry) = self.entries.get(&id).copied() else { return };
+        let Some(entry) = self.entries.get(&id).copied() else {
+            return;
+        };
         if let Some(pos) = self.locate(id, entry) {
             self.order.remove(pos);
         }
@@ -57,19 +61,37 @@ impl PinTable {
     }
 
     pub fn set_offset(&mut self, id: PinId, offset: usize) {
-        let Some(old) = self.entries.get(&id).copied() else { return };
+        let Some(old) = self.entries.get(&id).copied() else {
+            return;
+        };
         if old.offset == offset {
             return;
         }
-        self.reindex(id, old, Entry { offset, gravity: old.gravity });
+        self.reindex(
+            id,
+            old,
+            Entry {
+                offset,
+                gravity: old.gravity,
+            },
+        );
     }
 
     pub fn set_gravity(&mut self, id: PinId, gravity: Gravity) {
-        let Some(old) = self.entries.get(&id).copied() else { return };
+        let Some(old) = self.entries.get(&id).copied() else {
+            return;
+        };
         if old.gravity == gravity {
             return;
         }
-        self.reindex(id, old, Entry { offset: old.offset, gravity });
+        self.reindex(
+            id,
+            old,
+            Entry {
+                offset: old.offset,
+                gravity,
+            },
+        );
     }
 
     pub fn apply(&mut self, s: &Splice) {
@@ -83,10 +105,7 @@ impl PinTable {
 
         for i in suffix_start..self.order.len() {
             let id = self.order[i];
-            let entry = self
-                .entries
-                .get_mut(&id)
-                .expect("order mirrors entries");
+            let entry = self.entries.get_mut(&id).expect("order mirrors entries");
             let was = entry.offset;
             entry.offset = phi(s, was, entry.gravity);
 
@@ -124,7 +143,9 @@ impl PinTable {
 
     fn locate(&self, id: PinId, entry: Entry) -> Option<usize> {
         let entries = &self.entries;
-        let start = self.order.partition_point(|other| entries[other].offset < entry.offset);
+        let start = self
+            .order
+            .partition_point(|other| entries[other].offset < entry.offset);
         for at in start..self.order.len() {
             let other = self.order[at];
             if other == id {
@@ -141,11 +162,16 @@ impl PinTable {
         if let Some(pos) = self.locate(id, old) {
             self.order.remove(pos);
         }
-        let slot = self.entries.get_mut(&id).expect("entry was present a moment ago");
+        let slot = self
+            .entries
+            .get_mut(&id)
+            .expect("entry was present a moment ago");
         *slot = new;
 
         let entries = &self.entries;
-        let pos = self.order.partition_point(|other| entries[other].offset <= new.offset);
+        let pos = self
+            .order
+            .partition_point(|other| entries[other].offset <= new.offset);
         self.order.insert(pos, id);
     }
 }
@@ -336,10 +362,16 @@ mod tests {
         let right = t.add(5, Gravity::Right);
 
         t.apply(&Splice::remote(5, 5, "XY".into()));
-        assert_eq!((t.offset(cursor), t.offset(left), t.offset(right)), (5, 5, 7));
+        assert_eq!(
+            (t.offset(cursor), t.offset(left), t.offset(right)),
+            (5, 5, 7)
+        );
 
         t.apply(&Splice::new(5, 5, "Z".into()));
-        assert_eq!((t.offset(cursor), t.offset(left), t.offset(right)), (6, 5, 8));
+        assert_eq!(
+            (t.offset(cursor), t.offset(left), t.offset(right)),
+            (6, 5, 8)
+        );
 
         t.remove(cursor);
         t.remove(left);

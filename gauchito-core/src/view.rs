@@ -17,8 +17,8 @@ impl ViewId {
 }
 
 pub struct View {
-    pub id:        ViewId,
-    pub buf:       Rc<RefCell<Buffer>>,
+    pub id: ViewId,
+    pub buf: Rc<RefCell<Buffer>>,
     pub selection: Selection,
 }
 
