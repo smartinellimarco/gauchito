@@ -1,16 +1,16 @@
 [workspace]
 # Release only when the release PR is merged, not on every push to main.
 release_always = false
-changelog_update = false
-git_tag_enable = false
-# dist creates the GitHub release from the tag.
-git_release_enable = false
+# Versions come from the vX.Y.Z tags; nothing is published to crates.io.
+git_only = true
+release = false
 
 # One changelog and one vX.Y.Z tag for the whole workspace, carried by the binary crate.
 [[package]]
 name = "gauchito-cli"
-changelog_update = true
+release = true
 changelog_path = "./CHANGELOG.md"
 changelog_include = ["gauchito-core", "gauchito-ui", "gauchito-script"]
-git_tag_enable = true
 git_tag_name = "v{{ version }}"
+# dist creates the GitHub release from the tag.
+git_release_enable = false
