@@ -5,13 +5,12 @@ on:
     branches: [main]
 
 jobs:
-  # Publishes to crates.io and pushes the vX.Y.Z tag once the release PR is merged.
+  # Pushes the vX.Y.Z tag once the release PR is merged.
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: read
-      id-token: write
     steps:
       # A token from the bot app, since tags pushed with GITHUB_TOKEN do not start the dist release.
       - id: token
