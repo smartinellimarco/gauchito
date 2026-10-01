@@ -62,3 +62,4 @@ jobs:
             ui
             script
             cli
+            deps
