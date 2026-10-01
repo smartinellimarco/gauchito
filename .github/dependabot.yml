@@ -8,6 +8,8 @@ updates:
       prefix: build
   - package-ecosystem: github-actions
     directory: /
+    exclude-paths:
+      - .github/workflows/release.yml
     schedule:
       interval: weekly
     commit-message:
